@@ -147,6 +147,31 @@ go run ./cmd/vdbg search-pgvector \
 
 For the committed small fixture, the expected row count is `100` and the command should print `5` hits when `--expand-k 5` is used.
 
+## pgvector target fingerprint artifact check
+
+After the search smoke check succeeds, build a target-side fingerprint artifact from all fixture queries:
+
+```bash
+go run ./cmd/vdbg build-pgvector-artifact \
+  --fixture testdata/migration/synthetic-small.json \
+  --connection-url '[REDACTED]' \
+  --output /tmp/vdb-guardian-target-fingerprint.json \
+  --table items \
+  --top-k 3 \
+  --expand-k 5 \
+  --stable-k 2 \
+  --boundary-k 1 \
+  --metric cosine
+```
+
+Then verify the artifact JSON shape:
+
+```bash
+python -m json.tool /tmp/vdb-guardian-target-fingerprint.json >/dev/null
+```
+
+For the committed small fixture, the expected artifact contains `10` query fingerprints.
+
 ## Current limitations
 
-This stack now supports validating the pgvector target-side seed loop. It does not yet seed Milvus, run Milvus-to-pgvector migrations, or execute the full migrate-and-verify workflow. Those capabilities will be added in the migration MVP steps that follow.
+This stack now supports validating the pgvector target-side seed, search, and fingerprint artifact loops. It does not yet seed Milvus, run Milvus-to-pgvector migrations, or execute the full migrate-and-verify workflow. Those capabilities will be added in the migration MVP steps that follow.

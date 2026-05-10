@@ -34,6 +34,7 @@ Implemented in this scaffold:
 - pgvector synthetic fixture seeding.
 - `vdbg seed-pgvector` real pgvector fixture seeding CLI.
 - `vdbg search-pgvector` real pgvector search smoke CLI.
+- `vdbg build-pgvector-artifact` real pgvector fingerprint artifact CLI.
 - Synthetic vector dataset generator.
 - Fingerprint artifact builder.
 - Fingerprint engine interface.
@@ -101,6 +102,7 @@ go run ./cmd/vdbg offline-verify --fixture testdata/offline/basic.json --artifac
 go run ./cmd/vdbg generate-synthetic-fixture --output testdata/migration/synthetic-small.json --seed 42 --dimension 8 --records 100 --queries 10 --metric cosine
 go run ./cmd/vdbg seed-pgvector --fixture testdata/migration/synthetic-small.json --connection-url '[REDACTED]'
 go run ./cmd/vdbg search-pgvector --fixture testdata/migration/synthetic-small.json --connection-url '[REDACTED]' --top-k 3 --expand-k 5
+go run ./cmd/vdbg build-pgvector-artifact --fixture testdata/migration/synthetic-small.json --connection-url '[REDACTED]' --output /tmp/vdb-guardian-target-fingerprint.json --top-k 3 --expand-k 5 --stable-k 2 --boundary-k 1
 ```
 
 ## Engine protocol
@@ -217,6 +219,25 @@ go run ./cmd/vdbg search-pgvector \
 ```
 
 See `docs/search-pgvector-cli.md` for the read-only smoke workflow and limitations.
+
+## pgvector fingerprint artifact CLI
+
+The `vdbg build-pgvector-artifact` command searches every fixture query through the real pgvector connector and writes a Python-compatible target fingerprint artifact:
+
+```bash
+go run ./cmd/vdbg build-pgvector-artifact \
+  --fixture testdata/migration/synthetic-small.json \
+  --connection-url '[REDACTED]' \
+  --output /tmp/vdb-guardian-target-fingerprint.json \
+  --table items \
+  --top-k 3 \
+  --expand-k 5 \
+  --stable-k 2 \
+  --boundary-k 1 \
+  --metric cosine
+```
+
+See `docs/build-pgvector-artifact-cli.md` for the target-side artifact workflow and limitations.
 
 ## Synthetic vector fixtures
 
