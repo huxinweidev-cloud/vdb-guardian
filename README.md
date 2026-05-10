@@ -25,6 +25,7 @@ Implemented in this scaffold:
 - Typed YAML job configuration loader and validator.
 - Vector database connector interface.
 - Memory connector for deterministic local verification.
+- Minimal Milvus connector for migration MVP source-side search.
 - Minimal pgvector connector for migration MVP target-side search.
 - Local offline verification pipeline.
 - Offline verify fixture CLI command.
@@ -43,7 +44,7 @@ Implemented in this scaffold:
 
 Planned but not yet implemented:
 
-- Real Milvus connector.
+- Milvus real SDK adapter, fixture seeding, and integration tests.
 - pgvector fixture seeding and integration tests.
 - Real migration and verification CLI command.
 - API routes.
@@ -112,6 +113,12 @@ See `docs/engine-protocol.md` for the JSON input/output contract and `docs/finge
 The memory connector lives in `internal/connectors`. It returns deterministic precomputed ranked hits through the same `Connector` interface that future Milvus and pgvector connectors will implement.
 
 See `docs/memory-connector.md` for local verification usage and limitations.
+
+## Milvus connector
+
+The minimal Milvus connector lives in `internal/connectors`. It validates Milvus configuration, normalizes source-side search hits, and keeps real Milvus SDK calls behind an adapter boundary for the migration MVP.
+
+See `docs/milvus-connector.md` for current scope, score normalization, safety rules, and MVP limitations.
 
 ## pgvector connector
 
