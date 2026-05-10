@@ -50,6 +50,7 @@ Python 检索行为指纹算法引擎
 - CLI 入口：`cmd/vdbg`；
 - 服务端入口骨架：`cmd/vdb-guardian-server`；
 - Job 状态模型：`internal/jobs`；
+- 类型化 YAML 任务配置加载与校验：`internal/config`；
 - 向量数据库连接器接口：`internal/connectors`；
 - 指纹引擎接口：`internal/engine`；
 - 内存 Artifact Store：`internal/artifacts`；
@@ -201,6 +202,7 @@ vdb-guardian/
 │   └── vdb-guardian-server/
 ├── internal/
 │   ├── artifacts/
+│   ├── config/
 │   ├── connectors/
 │   ├── engine/
 │   ├── jobs/
@@ -246,6 +248,22 @@ vdb-guardian/
 ```text
 configs/local.yaml
 configs/milvus-to-pgvector.example.yaml
+```
+
+示例配置会通过 `internal/config` 中的类型化配置加载器进行解析和校验。当前校验内容包括：
+
+- `job.name` 必填；
+- `source.type` 和 `target.type` 必填；
+- `query.top_k` 必须大于 0；
+- `query.expand_k` 必须大于或等于 `query.top_k`；
+- `query.sample_size` 必须大于 0；
+- 指纹权重不能为空，且总权重大于 0；
+- 显式报告格式当前支持 `json` 和 `markdown`。
+
+完整配置说明见：
+
+```text
+docs/config-spec.md
 ```
 
 示例配置不得包含真实凭据。敏感值必须使用：

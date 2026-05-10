@@ -8,6 +8,21 @@ runtime:
     type: local
     path: ./artifacts
 
+source:
+  type: memory
+  collection: source_items
+
+target:
+  type: memory
+  collection: target_items
+
+query:
+  top_k: 10
+  expand_k: 20
+  sample_size: 100
+  filters:
+    enabled: false
+
 fingerprint:
   boundary:
     rank_before_k: 2

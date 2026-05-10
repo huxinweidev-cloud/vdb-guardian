@@ -21,6 +21,7 @@ Implemented in this scaffold:
 
 - Go module and command entrypoints.
 - Job state model.
+- Typed YAML job configuration loader and validator.
 - Vector database connector interface.
 - Fingerprint engine interface.
 - In-memory artifact store.
@@ -87,5 +88,9 @@ Example configuration files live in `configs/`:
 
 - `configs/local.yaml`
 - `configs/milvus-to-pgvector.example.yaml`
+
+The typed configuration loader lives in `internal/config` and validates job name, source/target connector type, query bounds, fingerprint weights, artifact store type, and report formats before a job can run.
+
+See `docs/config-spec.md` for the full configuration schema and validation rules.
 
 Example files must never contain real credentials. Use `[REDACTED]` for sensitive values.
