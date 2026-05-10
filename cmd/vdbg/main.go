@@ -24,6 +24,13 @@ func main() {
 		}
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "generate-synthetic-fixture" {
+		if err := runGenerateSyntheticFixture(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "generate-synthetic-fixture failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	fmt.Printf("%s: enterprise vector database migration verifier\n", info.Name)
 }

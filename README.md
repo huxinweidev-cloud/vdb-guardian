@@ -28,6 +28,7 @@ Implemented in this scaffold:
 - Local offline verification pipeline.
 - Offline verify fixture CLI command.
 - Local Milvus and pgvector migration Docker Compose stack.
+- Synthetic vector dataset generator.
 - Fingerprint artifact builder.
 - Fingerprint engine interface.
 - Python subprocess engine runner.
@@ -43,7 +44,6 @@ Planned but not yet implemented:
 
 - Real Milvus connector.
 - Real pgvector connector.
-- Synthetic vector dataset generation.
 - Real migration and verification CLI command.
 - API routes.
 - Persistent job storage.
@@ -92,6 +92,7 @@ uv run ruff check .
 go run ./cmd/vdbg --version
 go run ./cmd/vdb-guardian-server
 go run ./cmd/vdbg offline-verify --fixture testdata/offline/basic.json --artifact-dir /tmp/vdb-guardian-offline
+go run ./cmd/vdbg generate-synthetic-fixture --output testdata/migration/synthetic-small.json --seed 42 --dimension 8 --records 100 --queries 10 --metric cosine
 ```
 
 ## Engine protocol
@@ -156,6 +157,22 @@ make migration-stack-up
 ```
 
 See `docs/local-migration-stack.md` for ports, local-only credentials, health checks, and limitations.
+
+## Synthetic vector fixtures
+
+The `vdbg generate-synthetic-fixture` command creates deterministic vector records and query vectors for upcoming Milvus to pgvector migration tests.
+
+```bash
+go run ./cmd/vdbg generate-synthetic-fixture \
+  --output testdata/migration/synthetic-small.json \
+  --seed 42 \
+  --dimension 8 \
+  --records 100 \
+  --queries 10 \
+  --metric cosine
+```
+
+The first MVP supports dimensions `1..2000`, matching pgvector `vector` compatibility. See `docs/synthetic-vector-fixtures.md` for the JSON format and recommended test stages.
 
 ## Configuration examples
 
