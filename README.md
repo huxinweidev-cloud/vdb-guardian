@@ -27,6 +27,7 @@ Implemented in this scaffold:
 - Memory connector for deterministic local verification.
 - Local offline verification pipeline.
 - Offline verify fixture CLI command.
+- Local Milvus and pgvector migration Docker Compose stack.
 - Fingerprint artifact builder.
 - Fingerprint engine interface.
 - Python subprocess engine runner.
@@ -42,7 +43,8 @@ Planned but not yet implemented:
 
 - Real Milvus connector.
 - Real pgvector connector.
-- Docker-based integration environment.
+- Synthetic vector dataset generation.
+- Real migration and verification CLI command.
 - API routes.
 - Persistent job storage.
 - Full report generation.
@@ -64,6 +66,7 @@ Read `CLAUDE.md` before development. The project requires:
 make fmt
 make lint
 make test
+make migration-stack-config
 ```
 
 Go only:
@@ -135,6 +138,24 @@ See `docs/local-offline-pipeline.md` for the workflow, generated artifacts, and 
 The `vdbg offline-verify` command runs the local offline pipeline from a JSON fixture and writes fingerprint/result artifacts without Docker or real databases.
 
 See `docs/offline-verify-fixture.md` and `testdata/offline/basic.json` for the fixture format and smoke command.
+
+## Local migration stack
+
+The local migration stack defines Milvus standalone and PostgreSQL pgvector services for the upcoming migration-and-verification MVP.
+
+Validate the Compose file without starting containers:
+
+```bash
+make migration-stack-config
+```
+
+Start the stack only when you are ready to create local Docker containers, networks, and volumes:
+
+```bash
+make migration-stack-up
+```
+
+See `docs/local-migration-stack.md` for ports, local-only credentials, health checks, and limitations.
 
 ## Configuration examples
 

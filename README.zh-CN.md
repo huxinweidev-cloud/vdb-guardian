@@ -56,6 +56,7 @@ Python 检索行为指纹算法引擎
 - memory connector：`internal/connectors`；
 - 本地 offline verification pipeline：`internal/pipeline`；
 - offline-verify fixture CLI 命令；
+- 本地 Milvus / pgvector migration Docker Compose 环境；
 - 指纹 artifact builder：`internal/fingerprints`；
 - 指纹引擎接口：`internal/engine`；
 - Python 子进程引擎 Runner；
@@ -77,7 +78,8 @@ Python 检索行为指纹算法引擎
 
 - 真实 Milvus connector；
 - 真实 pgvector connector；
-- Docker Compose 集成测试环境；
+- 合成向量数据生成；
+- 真实迁移与对比 CLI；
 - HTTP API 路由；
 - 持久化 Job Store；
 - 完整 Markdown / JSON 报告生成；
@@ -243,6 +245,28 @@ docs/local-offline-pipeline.md
 docs/offline-verify-fixture.md
 ```
 
+### 13. 本地 Migration Stack
+
+本地 migration stack 定义了 Milvus standalone 与 PostgreSQL pgvector 服务，用于后续基础迁移对比 MVP。
+
+只校验 Compose 文件、不启动容器：
+
+```bash
+make migration-stack-config
+```
+
+启动容器、网络和卷：
+
+```bash
+make migration-stack-up
+```
+
+详细说明见：
+
+```text
+docs/local-migration-stack.md
+```
+
 ## 本地开发要求
 
 开发前必须阅读：
@@ -269,6 +293,7 @@ CLAUDE.md
 make fmt       # 格式化 Go 和 Python 代码
 make lint      # 运行 go vet 和 ruff check
 make test      # 运行 Go 和 Python 单元测试
+make migration-stack-config  # 校验本地 migration Docker Compose 配置，不启动容器
 ```
 
 Go：
@@ -454,7 +479,8 @@ feat(engine): add boundary candidate metrics
 - [ ] 合成数据生成；
 - [ ] 检索结果采集；
 - [ ] 指纹距离报告；
-- [ ] Docker Compose 本地实验环境。
+- [x] Docker Compose 本地实验环境；
+- [ ] 基础迁移对比 CLI。
 
 ### Phase 4：企业级部署能力
 
