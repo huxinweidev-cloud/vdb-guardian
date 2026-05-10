@@ -44,6 +44,7 @@ Python owns algorithm velocity:
 - `internal/pipeline`: local offline verification pipeline orchestration.
 - `internal/config`: typed YAML job configuration loading and validation.
 - `internal/connectors`: normalized vector database connector contract, memory connector, minimal Milvus connector, and minimal pgvector connector.
+- `internal/migration`: write-side migration and fixture seeding orchestration.
 - `internal/engine`: Go-to-engine comparison contract and Python subprocess runner.
 - `internal/fingerprints`: artifact builder from normalized search results.
 - `internal/artifacts`: storage abstraction for fingerprints, reports, and intermediate files.

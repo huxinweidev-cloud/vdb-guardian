@@ -64,6 +64,16 @@ Connector changes must update:
 
 Run `go test ./internal/connectors`, `make test`, and `git diff --check` before committing.
 
+## Migration development
+
+Migration and fixture seeding changes must update:
+
+- `internal/migration` tests.
+- migration-specific documentation under `docs/`.
+- README files when the migration workflow changes.
+
+Run `go test ./internal/migration`, `make test`, and `git diff --check` before committing.
+
 ## Fingerprint artifact builder development
 
 Fingerprint builder changes must update:

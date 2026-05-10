@@ -30,6 +30,7 @@ Implemented in this scaffold:
 - Local offline verification pipeline.
 - Offline verify fixture CLI command.
 - Local Milvus and pgvector migration Docker Compose stack.
+- pgvector synthetic fixture seeding.
 - Synthetic vector dataset generator.
 - Fingerprint artifact builder.
 - Fingerprint engine interface.
@@ -45,7 +46,7 @@ Implemented in this scaffold:
 Planned but not yet implemented:
 
 - Milvus real SDK adapter, fixture seeding, and integration tests.
-- pgvector fixture seeding and integration tests.
+- pgvector real database seeding CLI and integration tests.
 - Real migration and verification CLI command.
 - API routes.
 - Persistent job storage.
@@ -171,6 +172,12 @@ make migration-stack-up
 ```
 
 See `docs/local-migration-stack.md` for ports, local-only credentials, health checks, and limitations.
+
+## pgvector fixture seeding
+
+The pgvector fixture seeder lives in `internal/migration`. It creates the pgvector extension/table and upserts deterministic synthetic records through an injected database adapter.
+
+See `docs/pgvector-fixture-seeding.md` for SQL behavior, validation rules, and current limitations.
 
 ## Synthetic vector fixtures
 

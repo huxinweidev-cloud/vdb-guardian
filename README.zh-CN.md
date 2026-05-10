@@ -59,6 +59,7 @@ Python 检索行为指纹算法引擎
 - 本地 offline verification pipeline：`internal/pipeline`；
 - offline-verify fixture CLI 命令；
 - 本地 Milvus / pgvector migration Docker Compose 环境；
+- pgvector 合成 fixture 写入器；
 - 合成向量数据生成器；
 - 指纹 artifact builder：`internal/fingerprints`；
 - 指纹引擎接口：`internal/engine`；
@@ -80,7 +81,7 @@ Python 检索行为指纹算法引擎
 以下能力在 roadmap 中，当前还不是已完成功能：
 
 - Milvus 真实 SDK adapter、fixture 写入与集成测试；
-- pgvector fixture 写入与集成测试；
+- pgvector 真实数据库写入 CLI 与集成测试；
 - 真实迁移与对比 CLI；
 - HTTP API 路由；
 - 持久化 Job Store；
@@ -301,7 +302,23 @@ make migration-stack-up
 docs/local-migration-stack.md
 ```
 
-### 16. 合成向量 Fixture
+### 16. pgvector Fixture 写入器
+
+pgvector fixture 写入器位于：
+
+```text
+internal/migration
+```
+
+它负责创建 pgvector extension/table，并通过 adapter upsert 合成 records。当前为可单元测试的写入逻辑，真实数据库 CLI 和集成测试仍在后续步骤。
+
+详细说明见：
+
+```text
+docs/pgvector-fixture-seeding.md
+```
+
+### 17. 合成向量 Fixture
 
 `vdbg generate-synthetic-fixture` 命令可以生成固定 seed 的 records 与 query vectors，供后续 Milvus 写入、pgvector 写入和迁移对比使用。
 
@@ -536,6 +553,7 @@ feat(engine): add boundary candidate metrics
 - [x] offline-verify fixture CLI；
 - [x] Milvus connector；
 - [x] pgvector connector；
+- [x] pgvector fixture 写入器；
 - [x] 合成数据生成；
 - [ ] 检索结果采集；
 - [ ] 指纹距离报告；
