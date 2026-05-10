@@ -43,6 +43,17 @@ Go/Python engine protocol changes must update:
 
 Run `go test ./internal/engine`, `cd python && uv run pytest tests/test_cli.py`, and `make test` before committing.
 
+## Job runner development
+
+Local job runner changes must update:
+
+- `internal/jobs` runner tests.
+- result artifact documentation when output fields change.
+- `docs/local-verification-runner.md`.
+- README files when user-facing workflow changes.
+
+Run `go test ./internal/jobs`, `make test`, and `git diff --check` before committing.
+
 ## Progress reporting
 
 Report progress at phase boundaries:

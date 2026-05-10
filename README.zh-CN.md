@@ -50,6 +50,7 @@ Python 检索行为指纹算法引擎
 - CLI 入口：`cmd/vdbg`；
 - 服务端入口骨架：`cmd/vdb-guardian-server`；
 - Job 状态模型：`internal/jobs`；
+- 本地 verification job runner：`internal/jobs`；
 - 类型化 YAML 任务配置加载与校验：`internal/config`；
 - 向量数据库连接器接口：`internal/connectors`；
 - 指纹引擎接口：`internal/engine`；
@@ -144,6 +145,26 @@ cat /tmp/vdb-engine-output.json
 
 ```text
 docs/fingerprint-artifact-format.md
+```
+
+### 7. 本地 Verification Runner
+
+Go 本地任务 runner 位于：
+
+```text
+internal/jobs
+```
+
+它接收 source / target fingerprint artifact 路径，调用 `engine.Engine`，并写出：
+
+```text
+<artifact-dir>/<job-id>-result.json
+```
+
+详细说明见：
+
+```text
+docs/local-verification-runner.md
 ```
 
 ## 本地开发要求
@@ -340,7 +361,8 @@ feat(engine): add boundary candidate metrics
 - [x] 配置校验；
 - [x] 本地 artifact store；
 - [x] Python subprocess engine runner；
-- [x] JSON 输入输出协议。
+- [x] JSON 输入输出协议；
+- [x] 本地 verification job runner。
 
 ### Phase 3：Milvus 到 pgvector 实验链路
 

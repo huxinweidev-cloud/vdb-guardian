@@ -18,6 +18,7 @@ Go owns enterprise reliability concerns:
 
 - CLI and future server entrypoints.
 - Job lifecycle states.
+- Local verification job orchestration.
 - Typed YAML configuration loading and validation.
 - Connector interfaces.
 - Artifact storage abstraction.
@@ -36,7 +37,7 @@ Python owns algorithm velocity:
 
 ## Core packages
 
-- `internal/jobs`: durable job lifecycle states.
+- `internal/jobs`: durable job lifecycle states and local verification runner.
 - `internal/config`: typed YAML job configuration loading and validation.
 - `internal/connectors`: normalized vector database connector contract.
 - `internal/engine`: Go-to-engine comparison contract and Python subprocess runner.

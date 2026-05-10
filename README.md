@@ -21,6 +21,7 @@ Implemented in this scaffold:
 
 - Go module and command entrypoints.
 - Job state model.
+- Local verification job runner.
 - Typed YAML job configuration loader and validator.
 - Vector database connector interface.
 - Fingerprint engine interface.
@@ -95,6 +96,16 @@ uv run python -m vdb_fingerprint_engine.cli compare --input /tmp/vdb-engine-inpu
 ```
 
 See `docs/engine-protocol.md` for the JSON input/output contract and `docs/fingerprint-artifact-format.md` for the artifact schema. The current compare command reads source and target fingerprint artifacts and returns artifact-backed consistency metrics.
+
+## Local verification runner
+
+The Go local verification runner lives in `internal/jobs`. It accepts source and target fingerprint artifact paths, invokes an `engine.Engine`, and writes a structured result artifact:
+
+```text
+<artifact-dir>/<job-id>-result.json
+```
+
+See `docs/local-verification-runner.md` for the current workflow and limitations.
 
 ## Configuration examples
 
