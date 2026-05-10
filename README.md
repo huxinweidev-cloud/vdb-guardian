@@ -1,5 +1,7 @@
 # vdb-guardian
 
+中文文档: [README.zh-CN.md](README.zh-CN.md)
+
 `vdb-guardian` is an enterprise-oriented retrieval behavior consistency verifier for heterogeneous vector database migrations.
 
 The project validates whether a target vector database preserves the source database's retrieval behavior after migration. It focuses on retrieval behavior fingerprints, boundary candidates, fingerprint distance, consistency scoring, and explainable difference reports.

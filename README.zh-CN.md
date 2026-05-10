@@ -1,0 +1,335 @@
+# vdb-guardian
+
+`vdb-guardian` 是一个面向企业级部署的异构向量数据库迁移一致性验证平台。
+
+它关注的不是“数据有没有搬过去”或“目标库跑得快不快”，而是：迁移后，目标向量数据库是否保持了源向量数据库的检索行为。
+
+项目核心方法是“检索行为指纹”：通过稳定近邻集合、边界候选集合、边界候选翻转率、指纹距离和一致性评分，量化 Milvus、pgvector 等异构向量数据库之间的迁移一致性。
+
+English: [README.md](README.md)
+
+## 项目定位
+
+`vdb-guardian` 旨在构建一个可长期演进的企业级工具，用于：
+
+- 验证异构向量数据库迁移后的检索行为一致性；
+- 发现普通 topK 重合率、数据计数或 benchmark 难以发现的边界结果漂移；
+- 为迁移验收、灰度验证、审计报告和专利实验提供可复现指标；
+- 支持从 Milvus 到 pgvector 的第一阶段验证，并为 Qdrant、Weaviate、Elastic/OpenSearch、Pinecone 等连接器预留扩展能力。
+
+本项目强调：
+
+```text
+验证的是迁移后的检索行为层一致性，而不仅是数据完整性或性能指标。
+```
+
+## 架构概览
+
+第一阶段采用 Go + Python monorepo 架构：
+
+```text
+Go 控制面 / CLI / API-ready / Job / Connector / Artifact Store
+        |
+        | 稳定 JSON / artifact 协议
+        v
+Python 检索行为指纹算法引擎
+```
+
+职责划分：
+
+- Go 负责企业级控制面：CLI、服务入口、任务状态、连接器接口、引擎接口、artifact 存储抽象。
+- Python 负责算法引擎：边界候选集合、集合距离、边界翻转率、加权指纹距离和后续一致性评分。
+
+这种设计让项目从第一天就具备企业级边界，同时避免过早引入复杂微服务。
+
+## 当前已实现能力
+
+当前分支已经包含第一版企业级骨架：
+
+- Go module；
+- CLI 入口：`cmd/vdbg`；
+- 服务端入口骨架：`cmd/vdb-guardian-server`；
+- Job 状态模型：`internal/jobs`；
+- 向量数据库连接器接口：`internal/connectors`；
+- 指纹引擎接口：`internal/engine`；
+- 内存 Artifact Store：`internal/artifacts`；
+- Python 指纹算法包：`python/vdb_fingerprint_engine`；
+- 边界候选集合选择；
+- Jaccard distance；
+- boundary flip rate；
+- weighted fingerprint distance；
+- Go / Python 单元测试；
+- `Makefile` 质量门禁；
+- 架构文档和配置示例。
+
+## 暂未实现能力
+
+以下能力在 roadmap 中，当前还不是已完成功能：
+
+- 真实 Milvus connector；
+- 真实 pgvector connector；
+- Docker Compose 集成测试环境；
+- HTTP API 路由；
+- 持久化 Job Store；
+- 完整 Markdown / JSON 报告生成；
+- Kubernetes / Helm 部署；
+- Web UI。
+
+## 快速开始
+
+### 1. 克隆仓库
+
+```bash
+git clone git@github.com:huxinweidev-cloud/vdb-guardian.git
+cd vdb-guardian
+```
+
+### 2. 运行完整质量门禁
+
+```bash
+make fmt
+make lint
+make test
+```
+
+### 3. Go CLI 冒烟检查
+
+```bash
+go run ./cmd/vdbg --version
+```
+
+预期输出类似：
+
+```text
+vdb-guardian dev
+```
+
+### 4. Go 服务入口冒烟检查
+
+```bash
+go run ./cmd/vdb-guardian-server
+```
+
+预期输出类似：
+
+```text
+vdb-guardian server scaffold dev
+```
+
+### 5. Python 引擎检查
+
+```bash
+cd python
+uv sync
+uv run pytest
+uv run python -m vdb_fingerprint_engine.cli --version
+```
+
+## 本地开发要求
+
+开发前必须阅读：
+
+```text
+CLAUDE.md
+```
+
+核心要求：
+
+- 严格 TDD：先写失败测试，再写实现；
+- 每个 public Go 类型、函数、方法必须写 Go doc 注释；
+- 每个 public Python class/function/method 必须写 docstring；
+- 每个新增方法都必须有单元测试；
+- 提交前必须运行格式化、lint 和测试；
+- README、docs、配置示例必须随功能同步更新；
+- 不得提交真实 token、密码、私钥、数据库连接串或业务数据。
+
+## 常用命令
+
+仓库根目录：
+
+```bash
+make fmt       # 格式化 Go 和 Python 代码
+make lint      # 运行 go vet 和 ruff check
+make test      # 运行 Go 和 Python 单元测试
+```
+
+Go：
+
+```bash
+make test-go
+make lint-go
+go test ./...
+```
+
+Python：
+
+```bash
+cd python
+uv sync
+uv run pytest
+uv run ruff format .
+uv run ruff check .
+```
+
+## Python 依赖管理
+
+本项目使用 `uv` 作为 Python 子项目的标准依赖管理工具。
+
+推荐：
+
+```bash
+cd python
+uv sync
+uv run pytest
+uv run ruff check .
+```
+
+不推荐直接使用全局：
+
+```bash
+pip install ...
+```
+
+`pip` 仅作为系统兼容、故障排查或安装底层工具时的备用手段，不作为项目依赖的标准安装入口。
+
+## 目录结构
+
+```text
+vdb-guardian/
+├── cmd/
+│   ├── vdbg/
+│   └── vdb-guardian-server/
+├── internal/
+│   ├── artifacts/
+│   ├── connectors/
+│   ├── engine/
+│   ├── jobs/
+│   └── version/
+├── python/
+│   ├── pyproject.toml
+│   ├── uv.lock
+│   ├── tests/
+│   └── vdb_fingerprint_engine/
+├── configs/
+├── docs/
+├── CLAUDE.md
+├── Makefile
+└── README.md
+```
+
+## 核心概念
+
+### 检索行为指纹
+
+检索行为指纹用于描述一个向量数据库面对一组查询时表现出的检索行为，包括稳定近邻集合、边界候选集合、相似度衰减特征、过滤条件影响和 topK 变化等。
+
+### 边界候选集合
+
+边界候选集合指位于 topK 检索结果边界附近，并且与第 K 位结果相似度差值小于阈值的候选向量集合。
+
+这些候选项对迁移一致性非常敏感，因为它们最容易因索引实现、距离计算、量化、过滤语义或排序规则差异而进入或退出 topK。
+
+### 边界候选翻转率
+
+边界候选翻转率用于衡量边界候选在源库和目标库中进入或退出 topK 的比例。
+
+它可以发现普通 topK 重合率较高时仍然存在的边界漂移问题。
+
+### 指纹距离
+
+指纹距离用于综合多个检索行为差异指标，输出一个归一化距离。距离越低，说明源库和目标库的检索行为越接近。
+
+## 配置示例
+
+示例配置位于：
+
+```text
+configs/local.yaml
+configs/milvus-to-pgvector.example.yaml
+```
+
+示例配置不得包含真实凭据。敏感值必须使用：
+
+```text
+[REDACTED]
+```
+
+## 开发工作流
+
+推荐分支命名：
+
+```text
+feat/<description>
+fix/<description>
+docs/<description>
+test/<description>
+chore/<description>
+```
+
+提交前必须执行：
+
+```bash
+make fmt
+make lint
+make test
+git diff --check
+```
+
+提交信息采用 Conventional Commits，例如：
+
+```text
+feat(engine): add boundary candidate metrics
+
+- Add boundary candidate selection based on topK expanded results
+- Add boundary flip rate calculation
+- Add unit tests for empty, identical, and partially overlapping sets
+```
+
+## Roadmap
+
+### Phase 1：企业级骨架
+
+- [x] Go + Python monorepo；
+- [x] CLI / server 入口；
+- [x] Connector / Engine / Artifact Store 接口；
+- [x] Python 指纹算法最小实现；
+- [x] 单元测试和质量门禁；
+- [x] 架构文档。
+
+### Phase 2：配置和本地任务执行
+
+- [ ] 类型化 Job 配置加载；
+- [ ] 配置校验；
+- [ ] 本地 artifact store；
+- [ ] Python subprocess engine runner；
+- [ ] JSON 输入输出协议。
+
+### Phase 3：Milvus 到 pgvector 实验链路
+
+- [ ] Milvus connector；
+- [ ] pgvector connector；
+- [ ] 合成数据生成；
+- [ ] 检索结果采集；
+- [ ] 指纹距离报告；
+- [ ] Docker Compose 本地实验环境。
+
+### Phase 4：企业级部署能力
+
+- [ ] API server；
+- [ ] 持久化 job store；
+- [ ] Prometheus metrics；
+- [ ] structured logging；
+- [ ] Docker 镜像；
+- [ ] Kubernetes / Helm。
+
+## 安全说明
+
+- 不要提交真实数据库连接串；
+- 不要提交 GitHub token、云服务密钥或私钥；
+- 不要上传真实业务数据；
+- 默认使用合成数据进行测试；
+- Docker 操作必须先说明容器、端口、volume、network 和清理方式。
+
+## 许可证
+
+请查看仓库中的 `LICENSE` 文件。
