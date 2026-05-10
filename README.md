@@ -33,6 +33,7 @@ Implemented in this scaffold:
 - Milvus synthetic fixture seeding.
 - `vdbg seed-milvus` real Milvus fixture seeding CLI.
 - `vdbg search-milvus` real Milvus search smoke CLI.
+- `vdbg build-milvus-artifact` real Milvus fingerprint artifact CLI.
 - pgvector synthetic fixture seeding.
 - `vdbg seed-pgvector` real pgvector fixture seeding CLI.
 - `vdbg search-pgvector` real pgvector search smoke CLI.
@@ -104,6 +105,7 @@ go run ./cmd/vdbg offline-verify --fixture testdata/offline/basic.json --artifac
 go run ./cmd/vdbg generate-synthetic-fixture --output testdata/migration/synthetic-small.json --seed 42 --dimension 8 --records 100 --queries 10 --metric cosine
 go run ./cmd/vdbg seed-milvus --fixture testdata/migration/synthetic-small.json --address localhost:19530
 go run ./cmd/vdbg search-milvus --fixture testdata/migration/synthetic-small.json --address localhost:19530 --top-k 3 --expand-k 5
+go run ./cmd/vdbg build-milvus-artifact --fixture testdata/migration/synthetic-small.json --address localhost:19530 --output /tmp/vdb-guardian-source-fingerprint.json --top-k 3 --expand-k 5 --stable-k 2 --boundary-k 1
 go run ./cmd/vdbg seed-pgvector --fixture testdata/migration/synthetic-small.json --connection-url '[REDACTED]'
 go run ./cmd/vdbg search-pgvector --fixture testdata/migration/synthetic-small.json --connection-url '[REDACTED]' --top-k 3 --expand-k 5
 go run ./cmd/vdbg build-pgvector-artifact --fixture testdata/migration/synthetic-small.json --connection-url '[REDACTED]' --output /tmp/vdb-guardian-target-fingerprint.json --top-k 3 --expand-k 5 --stable-k 2 --boundary-k 1
@@ -220,6 +222,27 @@ go run ./cmd/vdbg search-milvus \
 ```
 
 See `docs/search-milvus-cli.md` for the source-side read smoke workflow and limitations.
+
+## Milvus fingerprint artifact
+
+The `vdbg build-milvus-artifact` command searches every fixture query against real Milvus and writes a Python-compatible source fingerprint artifact:
+
+```bash
+go run ./cmd/vdbg build-milvus-artifact \
+  --fixture testdata/migration/synthetic-small.json \
+  --address localhost:19530 \
+  --output /tmp/vdb-guardian-source-fingerprint.json \
+  --collection items \
+  --id-field id \
+  --vector-field embedding \
+  --top-k 3 \
+  --expand-k 5 \
+  --stable-k 2 \
+  --boundary-k 1 \
+  --metric cosine
+```
+
+See `docs/build-milvus-artifact-cli.md` for the source artifact workflow and limitations.
 
 ## pgvector fixture seeding
 

@@ -62,6 +62,7 @@ Python 检索行为指纹算法引擎
 - Milvus 合成 fixture 写入器；
 - `vdbg seed-milvus` 真实 Milvus fixture 写入 CLI；
 - `vdbg search-milvus` 真实 Milvus 检索冒烟 CLI；
+- `vdbg build-milvus-artifact` 真实 Milvus 指纹 artifact CLI；
 - pgvector 合成 fixture 写入器；
 - `vdbg seed-pgvector` 真实 pgvector fixture 写入 CLI；
 - `vdbg search-pgvector` 真实 pgvector 检索冒烟 CLI；
@@ -358,7 +359,32 @@ go run ./cmd/vdbg search-milvus \
 docs/search-milvus-cli.md
 ```
 
-### 18. pgvector Fixture 写入器与真实写入 CLI
+### 18. Milvus 指纹 Artifact CLI
+
+`vdbg build-milvus-artifact` 会复用真实 Milvus connector，对 fixture 中每个 query 执行向量检索，并写出 Python 引擎可消费的 source fingerprint artifact：
+
+```bash
+go run ./cmd/vdbg build-milvus-artifact \
+  --fixture testdata/migration/synthetic-small.json \
+  --address localhost:19530 \
+  --output /tmp/vdb-guardian-source-fingerprint.json \
+  --collection items \
+  --id-field id \
+  --vector-field embedding \
+  --top-k 3 \
+  --expand-k 5 \
+  --stable-k 2 \
+  --boundary-k 1 \
+  --metric cosine
+```
+
+详细说明见：
+
+```text
+docs/build-milvus-artifact-cli.md
+```
+
+### 19. pgvector Fixture 写入器与真实写入 CLI
 
 pgvector fixture 写入器位于：
 
@@ -384,7 +410,7 @@ docs/pgvector-fixture-seeding.md
 docs/seed-pgvector-cli.md
 ```
 
-### 18. pgvector 检索冒烟 CLI
+### 20. pgvector 检索冒烟 CLI
 
 `vdbg search-pgvector` 会复用真实 pgvector connector，对已写入的表执行记录数统计和单个 fixture query 的向量检索：
 
@@ -405,7 +431,7 @@ go run ./cmd/vdbg search-pgvector \
 docs/search-pgvector-cli.md
 ```
 
-### 19. pgvector 指纹 Artifact CLI
+### 21. pgvector 指纹 Artifact CLI
 
 `vdbg build-pgvector-artifact` 会复用真实 pgvector connector，对 fixture 中每个 query 执行向量检索，并写出 Python 引擎可消费的 target fingerprint artifact：
 
@@ -428,7 +454,7 @@ go run ./cmd/vdbg build-pgvector-artifact \
 docs/build-pgvector-artifact-cli.md
 ```
 
-### 20. 合成向量 Fixture
+### 22. 合成向量 Fixture
 
 `vdbg generate-synthetic-fixture` 命令可以生成固定 seed 的 records 与 query vectors，供后续 Milvus 写入、pgvector 写入和迁移对比使用。
 
