@@ -80,10 +80,12 @@ func runMigrateAndVerifyWithSteps(ctx context.Context, args []string, steps migr
 	}
 	sourcePath := filepath.Join(options.ArtifactDir, options.JobID+"-source-fingerprint.json")
 	targetPath := filepath.Join(options.ArtifactDir, options.JobID+"-target-fingerprint.json")
-	if err := steps.BuildSourceArtifact(ctx, options, sourcePath); err != nil {
+	err = steps.BuildSourceArtifact(ctx, options, sourcePath)
+	if err != nil {
 		return migrateAndVerifyResult{}, err
 	}
-	if err := steps.BuildTargetArtifact(ctx, options, targetPath); err != nil {
+	err = steps.BuildTargetArtifact(ctx, options, targetPath)
+	if err != nil {
 		return migrateAndVerifyResult{}, err
 	}
 	verification, err := steps.Compare(ctx, compareArtifactsOptions{
@@ -146,41 +148,8 @@ func parseMigrateAndVerifyOptions(args []string) (migrateAndVerifyOptions, error
 	if err := flagSet.Parse(args); err != nil {
 		return migrateAndVerifyOptions{}, err
 	}
-	if fixturePath == "" {
-		return migrateAndVerifyOptions{}, errors.New("fixture path is required")
-	}
-	if milvusAddress == "" {
-		return migrateAndVerifyOptions{}, errors.New("milvus-address is required")
-	}
-	if pgvectorConnectionURL == "" {
-		return migrateAndVerifyOptions{}, errors.New("pgvector-connection-url is required")
-	}
-	if artifactDir == "" {
-		return migrateAndVerifyOptions{}, errors.New("artifact-dir is required")
-	}
-	if jobID == "" {
-		return migrateAndVerifyOptions{}, errors.New("job-id is required")
-	}
-	if dimension <= 0 {
-		return migrateAndVerifyOptions{}, errors.New("dimension must be positive")
-	}
-	if batchSize <= 0 {
-		return migrateAndVerifyOptions{}, errors.New("batch-size must be positive")
-	}
-	if topK <= 0 {
-		return migrateAndVerifyOptions{}, errors.New("top-k must be positive")
-	}
-	if stableK <= 0 || stableK > topK {
-		return migrateAndVerifyOptions{}, errors.New("stable-k must be positive and less than or equal to top-k")
-	}
-	if boundaryK <= 0 {
-		return migrateAndVerifyOptions{}, errors.New("boundary-k must be positive")
-	}
-	if expandK < topK+boundaryK {
-		return migrateAndVerifyOptions{}, errors.New("expand-k must be greater than or equal to top-k plus boundary-k")
-	}
-	if metric != connectors.MilvusMetricCosine && metric != connectors.MilvusMetricL2 {
-		return migrateAndVerifyOptions{}, fmt.Errorf("unsupported metric %q", metric)
+	if err := validateMigrateAndVerifyFields(fixturePath, milvusAddress, pgvectorConnectionURL, artifactDir, jobID, dimension, batchSize, topK, expandK, stableK, boundaryK, metric); err != nil {
+		return migrateAndVerifyOptions{}, err
 	}
 	return migrateAndVerifyOptions{
 		FixturePath: fixturePath,
@@ -261,4 +230,44 @@ func (realMigrateAndVerifySteps) Compare(ctx context.Context, options compareArt
 		compareEngine = engine.NewPythonRunner(pythonPath, pythonWorkDir)
 	}
 	return runCompareArtifacts(ctx, options, compareEngine)
+}
+
+func validateMigrateAndVerifyFields(fixturePath, milvusAddress, pgvectorConnectionURL, artifactDir, jobID string, dimension, batchSize, topK, expandK, stableK, boundaryK int, metric string) error {
+	if fixturePath == "" {
+		return errors.New("fixture path is required")
+	}
+	if milvusAddress == "" {
+		return errors.New("milvus-address is required")
+	}
+	if pgvectorConnectionURL == "" {
+		return errors.New("pgvector-connection-url is required")
+	}
+	if artifactDir == "" {
+		return errors.New("artifact-dir is required")
+	}
+	if jobID == "" {
+		return errors.New("job-id is required")
+	}
+	if dimension <= 0 {
+		return errors.New("dimension must be positive")
+	}
+	if batchSize <= 0 {
+		return errors.New("batch-size must be positive")
+	}
+	if topK <= 0 {
+		return errors.New("top-k must be positive")
+	}
+	if stableK <= 0 || stableK > topK {
+		return errors.New("stable-k must be positive and less than or equal to top-k")
+	}
+	if boundaryK <= 0 {
+		return errors.New("boundary-k must be positive")
+	}
+	if expandK < topK+boundaryK {
+		return errors.New("expand-k must be greater than or equal to top-k plus boundary-k")
+	}
+	if metric != connectors.MilvusMetricCosine && metric != connectors.MilvusMetricL2 {
+		return fmt.Errorf("unsupported metric %q", metric)
+	}
+	return nil
 }
