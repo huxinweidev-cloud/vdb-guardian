@@ -15,6 +15,10 @@ import (
 // deterministic search results from source and target connectors, builds Python-
 // compatible fingerprint artifacts, and delegates artifact comparison to the
 // local verification runner.
+//
+// OfflinePipeline 编排了一条完全脱离真实数据库的本地离线验证流水线。
+// 它从源端和目标端连接器读取确定性的检索结果，构建出兼容 Python 的指纹产物，
+// 然后将产物比对的任务委托给本地验证运行器 (local verification runner)。
 type OfflinePipeline struct {
 	// SourceConnector provides normalized source-side search results.
 	SourceConnector connectors.Connector
@@ -31,6 +35,10 @@ type OfflinePipeline struct {
 // OfflineRequest describes one local offline verification run. QueryIDs are used
 // as connector collection keys by the memory connector and can later map to real
 // query definitions when Milvus and pgvector connectors are available.
+//
+// OfflineRequest 描述了一次本地离线验证的执行请求。
+// 目前 QueryIDs 充当了内存连接器的 collection 键 (keys)；在未来的迭代中，
+// 当 Milvus 和 pgvector 真实连接器就绪后，它将映射到真实的查询定义中。
 type OfflineRequest struct {
 	// JobID identifies the local pipeline run and prefixes generated artifact files.
 	JobID string
@@ -44,6 +52,8 @@ type OfflineRequest struct {
 
 // OfflineResult contains generated fingerprint artifact paths and the final
 // verification result produced by the local runner.
+//
+// OfflineResult 包含了生成的指纹产物文件路径，以及由本地运行器生成的最终验证结果。
 type OfflineResult struct {
 	// JobID identifies the completed offline pipeline run.
 	JobID string
@@ -58,6 +68,11 @@ type OfflineResult struct {
 // NewOfflinePipeline creates a local offline verification pipeline. Dependencies
 // are injected so tests can use memory connectors and fake engines while future
 // production wiring can provide concrete database connectors and PythonRunner.
+//
+// NewOfflinePipeline 创建一条本地离线验证流水线。
+// 采用了依赖注入 (Dependency Injection) 的设计，这使得测试代码能够使用内存连接器
+// 和假引擎 (fake engines) 进行测试；而在未来的生产环境中，同样可以无缝注入具体的
+// 数据库连接器和真实的 PythonRunner。
 func NewOfflinePipeline(
 	source connectors.Connector,
 	target connectors.Connector,
@@ -78,6 +93,10 @@ func NewOfflinePipeline(
 // artifact writing. It returns before writing success artifacts when validation,
 // connector search, artifact construction, artifact writing, or engine comparison
 // fails.
+//
+// Run 方法执行完整的本地离线验证流水线：从调用连接器检索一直到写入最终的比对结果产物。
+// 如果在参数校验、连接器检索、产物构建、产物写入或是引擎比对的任何一个环节发生错误，
+// 该方法都会立即中断并返回错误，绝不会生成标记为成功的虚假产物文件。
 func (p OfflinePipeline) Run(ctx context.Context, request OfflineRequest) (OfflineResult, error) {
 	if err := ctx.Err(); err != nil {
 		return OfflineResult{}, err

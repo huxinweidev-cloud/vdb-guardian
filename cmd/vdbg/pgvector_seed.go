@@ -33,6 +33,12 @@ type closablePGVectorSeedRunner interface {
 // It does not start Docker and does not create local services; callers must point
 // it at an already-running local or test PostgreSQL instance with pgvector
 // available.
+//
+// runSeedPGVectorCommand 根据合成测试固件向 pgvector 数据表中灌入数据。
+//
+// 该命令通过基于 pgx 的灌入适配器执行真实的 PostgreSQL 写入操作。
+// 它不会启动 Docker，也不会创建本地服务；调用方必须提供一个已经处于运行状态、
+// 且安装了 pgvector 扩展的本地或测试 PostgreSQL 实例的连接信息。
 func runSeedPGVectorCommand(ctx context.Context, args []string) error {
 	return runSeedPGVectorWithFactory(ctx, args, newPGVectorSeedRunner)
 }

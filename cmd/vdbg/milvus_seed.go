@@ -30,6 +30,11 @@ type closableMilvusSeedRunner interface {
 // The command performs real Milvus writes through the Go SDK. It drops and
 // recreates the configured collection, so it is intended for local migration MVP
 // smoke checks rather than production data loading.
+//
+// runSeedMilvusCommand 根据合成测试固件向 Milvus 集合中灌入数据。
+//
+// 该命令通过官方 Go SDK 执行真实的 Milvus 写入操作。它会先删除并重新创建已配置的集合，
+// 因此它专为本地迁移 MVP 的冒烟测试而设计，绝不可用于生产环境的数据导入。
 func runSeedMilvusCommand(ctx context.Context, args []string) error {
 	return runSeedMilvusWithFactory(ctx, args, newMilvusSeedRunner)
 }

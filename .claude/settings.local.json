@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(grep \"\\\\.go$\")",
+      "Bash(make fmt *)",
+      "Bash(gofmt *)",
+      "Bash(uv run *)",
+      "Bash(cat)",
+      "Read(//tmp/**)",
+      "Bash(git add *)"
+    ]
+  }
+}

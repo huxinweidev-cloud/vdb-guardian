@@ -50,6 +50,10 @@ type milvusSDKSeedDB struct {
 // The adapter drops and recreates the configured collection before inserting a
 // deterministic synthetic fixture batch. It is intended for local migration MVP
 // smoke checks, not production data loading.
+//
+// NewMilvusSDKSeedDB 返回一个由真实 Milvus SDK 支持的数据灌入数据库适配器。
+// 在插入确定性的合成测试固件批次之前，该适配器会先删除并重新创建已配置的目标集合。
+// 它专为本地迁移 MVP 的冒烟测试而设计，切勿用于生产环境的数据导入。
 func NewMilvusSDKSeedDB(address string) *milvusSDKSeedDB {
 	return newMilvusSDKSeedDBWithClientFactory(address, newRealMilvusSeedSDKClient)
 }
@@ -67,6 +71,8 @@ func newRealMilvusSeedSDKClient(ctx context.Context, address string) (milvusSeed
 }
 
 // Connect opens the underlying Milvus SDK connection.
+//
+// Connect 开启底层的 Milvus SDK 连接。
 func (db *milvusSDKSeedDB) Connect(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -149,6 +155,8 @@ func (db *milvusSDKSeedDB) InsertRecords(ctx context.Context, req milvusInsertRe
 }
 
 // Close releases the underlying Milvus SDK connection.
+//
+// Close 释放底层的 Milvus SDK 连接。
 func (db *milvusSDKSeedDB) Close() error {
 	if db.client == nil {
 		return nil

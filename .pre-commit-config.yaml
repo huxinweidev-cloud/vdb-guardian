@@ -1,0 +1,51 @@
+# Pre-commit hooks for vdb-guardian
+# Install: pip install pre-commit && pre-commit install
+# Run manually: pre-commit run --all-files
+
+repos:
+  - repo: local
+    hooks:
+      # Go formatting
+      - id: gofmt
+        name: gofmt
+        entry: gofmt -w
+        language: system
+        types: [go]
+        pass_filenames: true
+
+      # Go vet
+      - id: go-vet
+        name: go vet
+        entry: go vet
+        language: system
+        types: [go]
+        pass_filenames: false
+        args: ['./...']
+
+      # Python formatting
+      - id: ruff-format
+        name: ruff format
+        entry: bash -c 'cd python && uv run ruff format'
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      # Python linting
+      - id: ruff-check
+        name: ruff check
+        entry: bash -c 'cd python && uv run ruff check'
+        language: system
+        types: [python]
+        pass_filenames: false
+
+  # Trailing whitespace
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: ['--unsafe']  # Allow custom YAML tags
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-merge-conflict

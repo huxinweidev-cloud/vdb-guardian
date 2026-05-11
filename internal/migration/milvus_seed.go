@@ -21,6 +21,11 @@ var milvusSeedIdentifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 // key field, one dense vector field, and a single vector dimension. Collection
 // indexing, loading, partitions, and metadata fields belong in later integration
 // steps.
+//
+// MilvusSeederConfig 控制着如何将合成的测试固件记录准备并写入 Milvus 集合。
+// 首个迁移 MVP 刻意限制了功能：仅支持单一集合、单一的文本类型主键字段、单一的稠密向量字段，
+// 以及单一的向量维度。集合的索引建立、加载进内存、分区划分以及元数据字段，
+// 均被安排在后续的集成步骤中实现。
 type MilvusSeederConfig struct {
 	Collection  string
 	IDField     string
@@ -33,6 +38,10 @@ type MilvusSeederConfig struct {
 //
 // The result is intended for future CLI/job reporting so users can confirm the
 // target collection, vector dimension, and number of inserted records.
+//
+// MilvusSeedResult 总结了针对 Milvus 的一次合成固件数据灌入执行结果。
+// 该结果专为未来的 CLI 或作业报告而设计，以便用户能够直观地确认
+// 数据被灌入的目标集合、向量维度以及成功插入的记录总数。
 type MilvusSeedResult struct {
 	Collection    string
 	Dimension     int
@@ -46,6 +55,10 @@ type MilvusSeedResult struct {
 // It owns write-side source database preparation for migration tests. Search and
 // retrieval behavior remain in the Milvus connector so seeding and querying stay
 // separated.
+//
+// MilvusSeeder 负责创建一个极简的 Milvus 集合边界，并向其中插入合成的固件记录。
+// 它独揽了迁移测试中“数据源端写入准备”的职责。与之相对的，搜索与检索行为则保留在
+// Milvus 连接器中，从而保证了数据灌入 (seeding) 与数据查询 (querying) 之间的职责分离。
 type MilvusSeeder struct {
 	config MilvusSeederConfig
 	db     milvusSeedDB
@@ -82,6 +95,11 @@ type milvusSeedRecord struct {
 // A database adapter is required because seeding performs write-side effects.
 // Unit tests can inject a fake adapter; a real Milvus SDK adapter can be added in
 // a later integration step without changing the seeder behavior contract.
+//
+// NewMilvusSeeder 校验配置，并返回一个用于写入合成 Milvus 测试数据的灌入器。
+// 由于数据灌入会产生写入层的副作用，因此数据库适配器是必填项。
+// 单元测试可以注入一个假的适配器 (fake adapter)；而在后续的集成步骤中，
+// 可以在不改变灌入器契约的前提下，无缝挂载一个真实的 Milvus SDK 适配器。
 func NewMilvusSeeder(config MilvusSeederConfig, db milvusSeedDB) (MilvusSeeder, error) {
 	config = applyMilvusSeederDefaults(config)
 	if err := validateMilvusSeederConfig(config, db); err != nil {
@@ -94,6 +112,10 @@ func NewMilvusSeeder(config MilvusSeederConfig, db milvusSeedDB) (MilvusSeeder, 
 //
 // It validates that the fixture dimension and every record vector match the
 // configured vector field dimension before any write request reaches the adapter.
+//
+// Seed 创建 Milvus 的集合边界，并插入所有的合成记录。
+// 在任何写入请求触达适配器之前，它会严格校验固件的整体维度以及每一条记录的向量长度，
+// 确保它们均与配置的向量字段维度绝对一致。
 func (s MilvusSeeder) Seed(ctx context.Context, dataset fixtures.SyntheticDataset) (MilvusSeedResult, error) {
 	if err := validateMilvusSeedDataset(s.config, dataset); err != nil {
 		return MilvusSeedResult{}, err

@@ -34,6 +34,12 @@ type milvusSearchConnector interface {
 // It is a smoke command for the source-side migration MVP. The command validates
 // Milvus connectivity, counts seeded records, executes one normalized search,
 // and prints ranked hits without starting Docker or writing data.
+//
+// runSearchMilvusCommand 使用真实的 Milvus 连接器，针对合成固件中的单条查询执行检索。
+//
+// 这是用于源端迁移 MVP 的冒烟测试命令。该命令用于验证 Milvus 连通性、统计已灌入的记录数、
+// 执行一次规范化的向量检索，并打印出带排名的命中结果。它绝对不会启动 Docker，
+// 也绝对不会写入任何数据。
 func runSearchMilvusCommand(ctx context.Context, args []string) error {
 	return runSearchMilvusWithFactory(ctx, args, newMilvusSearchConnector)
 }

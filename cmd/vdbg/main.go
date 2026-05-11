@@ -11,6 +11,10 @@ import (
 // main is the CLI entrypoint for local and automation-driven vdb-guardian usage.
 // The initial scaffold supports version output so operators can verify that the
 // binary and repository are wired correctly before connector commands are added.
+//
+// main 是 vdb-guardian 的命令行 (CLI) 入口点，供本地调试或自动化脚本调用。
+// 最初的脚手架仅支持输出版本信息，以便操作人员在添加连接器相关命令之前，
+// 就能提前验证二进制文件和代码仓库是否已正确关联。
 func main() {
 	info := version.Info()
 	if len(os.Args) > 1 && os.Args[1] == "--version" {

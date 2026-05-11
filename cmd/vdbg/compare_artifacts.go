@@ -24,6 +24,12 @@ type compareArtifactsOptions struct {
 // It is the first real database artifact comparison command: callers can generate
 // source artifacts from Milvus and target artifacts from pgvector, then use this
 // command to persist a normalized consistency result artifact.
+//
+// runCompareArtifactsCommand 解析 CLI 参数，创建一个由 Python 驱动的比对引擎，
+// 并对比本地现有的源端和目标端指纹产物。
+//
+// 它是第一个真正串联起真实数据库的产物比对命令：调用方可以先从 Milvus 生成源端产物，
+// 从 pgvector 生成目标端产物，然后使用本命令来生成并持久化一份规范化的一致性比对报告。
 func runCompareArtifactsCommand(ctx context.Context, args []string) error {
 	options, err := parseCompareArtifactsOptions(args)
 	if err != nil {
@@ -83,6 +89,10 @@ func parseCompareArtifactsOptions(args []string) (compareArtifactsOptions, error
 // runCompareArtifacts validates artifact paths, invokes the verification runner,
 // and returns the persisted comparison result. The engine is injected so tests can
 // avoid spawning Python while production commands use the PythonRunner.
+//
+// runCompareArtifacts 校验产物路径，调用验证运行器 (verification runner)，
+// 并返回持久化之后的比对结果。引擎参数通过依赖注入的方式传入，这样测试代码就可以
+// 避开繁重的拉起 Python 进程的开销，而生产环境命令则可以如期挂载 PythonRunner。
 func runCompareArtifacts(ctx context.Context, options compareArtifactsOptions, compareEngine engine.Engine) (jobs.VerificationResult, error) {
 	if options.SourceFingerprintPath == "" {
 		return jobs.VerificationResult{}, errors.New("source fingerprint path is required")

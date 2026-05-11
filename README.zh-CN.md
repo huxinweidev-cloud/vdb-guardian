@@ -1,5 +1,10 @@
 # vdb-guardian
 
+[![CI](https://github.com/h3xwave/vdb-guardian/workflows/CI/badge.svg)](https://github.com/h3xwave/vdb-guardian/actions)
+[![codecov](https://codecov.io/gh/h3xwave/vdb-guardian/branch/main/graph/badge.svg)](https://codecov.io/gh/h3xwave/vdb-guardian)
+[![Go Report Card](https://goreportcard.com/badge/github.com/h3xwave/vdb-guardian)](https://goreportcard.com/report/github.com/h3xwave/vdb-guardian)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+
 `vdb-guardian` 是一个面向企业级部署的异构向量数据库迁移一致性验证平台。
 
 它关注的不是“数据有没有搬过去”或“目标库跑得快不快”，而是：迁移后，目标向量数据库是否保持了源向量数据库的检索行为。

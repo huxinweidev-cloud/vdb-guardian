@@ -54,6 +54,11 @@ type offlinePipelineInputs struct {
 // runs the fixture-backed offline verification workflow. It keeps argument
 // parsing separate from orchestration so tests can inject fake engines into
 // runOfflineVerify without spawning Python.
+//
+// runOfflineVerifyCommand 解析 CLI 参数，创建一个由 Python 驱动的引擎，
+// 并执行基于固件的离线验证工作流。它刻意将“参数解析”与“业务编排”分离开来，
+// 这样在测试中就可以直接向 runOfflineVerify 注入模拟引擎 (fake engines)，
+// 从而避免真正拉起 Python 子进程的开销。
 func runOfflineVerifyCommand(ctx context.Context, args []string) error {
 	flags := flag.NewFlagSet("offline-verify", flag.ContinueOnError)
 	fixturePath := flags.String("fixture", "", "path to offline verification fixture JSON")
@@ -82,6 +87,10 @@ func runOfflineVerifyCommand(ctx context.Context, args []string) error {
 // local offline pipeline, and returns generated artifact paths plus engine
 // metrics. The engine parameter enables deterministic unit tests and production
 // execution with PythonRunner.
+//
+// runOfflineVerify 加载测试固件，据此构建出内存连接器，执行本地离线流水线，
+// 最后返回生成的产物路径以及引擎测算的各项指标。传入的 engine 引擎参数使得
+// 该函数既能支持确定性的单元测试，又能在生产执行时顺畅挂载 PythonRunner。
 func runOfflineVerify(ctx context.Context, options offlineVerifyOptions, compareEngine engine.Engine) (pipeline.OfflineResult, error) {
 	if options.FixturePath == "" {
 		return pipeline.OfflineResult{}, errors.New("offline verify fixture path must not be empty")
@@ -114,6 +123,10 @@ func runOfflineVerify(ctx context.Context, options offlineVerifyOptions, compare
 // loadOfflineFixture decodes and validates the JSON fixture used by the
 // offline-verify command. The fixture is intentionally small and deterministic so
 // local functional tests do not depend on Docker, SDKs, or live databases.
+//
+// loadOfflineFixture 解码并验证供 offline-verify 命令使用的 JSON 固件。
+// 该固件被刻意设计得非常小巧且具备绝对的确定性，这使得本地的功能测试能够
+// 彻底摆脱对 Docker、数据库 SDK 或真实运行中数据库的依赖。
 func loadOfflineFixture(path string) (offlineFixture, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

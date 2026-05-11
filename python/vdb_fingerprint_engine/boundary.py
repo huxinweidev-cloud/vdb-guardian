@@ -14,6 +14,13 @@ def select_boundary_candidates(
     leave topK when source and target vector databases differ in indexing,
     distance calculation, or filtering behavior.
 
+    在 TopK 决策边界附近筛选候选者。
+
+    边界候选者集合 (boundary candidate set) 捕获了那些排位接近业务可见的 TopK 截断点，
+    且得分接近第 K 个结果的向量记录。这些元素对于探测迁移过程中的行为漂移极其有用，
+    因为当源端与目标端向量数据库在索引机制、距离计算或过滤行为上存在差异时，
+    它们最容易跌出或跻身于 TopK 结果之中。
+
     Args:
         hits: Ranked search hits from a topK expanded query result.
         top_k: Business-visible topK cutoff. Must be greater than zero.

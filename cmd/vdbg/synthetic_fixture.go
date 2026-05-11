@@ -19,6 +19,13 @@ type generateSyntheticFixtureOptions struct {
 // The command writes JSON only and does not connect to Docker, Milvus, or
 // PostgreSQL. The generated file becomes the stable input for later database
 // seeders and migrate-and-verify commands.
+//
+// runGenerateSyntheticFixture 生成一份确定性的合成向量数据集固件，
+// 专用于本地 Milvus 到 pgvector 的迁移实验。
+//
+// 该命令仅负责写入 JSON 文件，绝不会连接 Docker、Milvus 或 PostgreSQL。
+// 生成的文件将作为极其稳定的基准输入，供后续的数据库数据灌入器 (seeders)
+// 以及一键迁移验证 (migrate-and-verify) 命令使用。
 func runGenerateSyntheticFixture(args []string) error {
 	options, err := parseGenerateSyntheticFixtureOptions(args)
 	if err != nil {

@@ -1,34 +1,54 @@
 # Local development configuration for vdb-guardian.
 # This file contains no real credentials and is intended as a safe starting point.
+#
+# vdb-guardian 的本地开发配置。
+# 此文件不包含任何真实的凭证信息，旨在作为一个安全的启动起点。
 job:
+  # 任务的名称标识符
   name: local-scaffold
 
 runtime:
   artifact_store:
+    # 产物存储的类型，例如 local (本地) 或 memory (内存)
     type: local
+    # 当类型为 local 时，指定本地的产物存储路径
     path: ./artifacts
 
 source:
+  # 源端连接器类型
   type: memory
+  # 源端集合名称
   collection: source_items
 
 target:
+  # 目标端连接器类型
   type: memory
+  # 目标端集合/表名称
   collection: target_items
 
 query:
+  # 业务侧可见的 TopK 结果数量
   top_k: 10
+  # 产物构建所需的扩展搜索数量，必须 >= top_k
   expand_k: 20
+  # 需要采样生成的验证查询数量
   sample_size: 100
   filters:
+    # 是否启用元数据过滤行为的采样
     enabled: false
 
 fingerprint:
   boundary:
+    # 在边界观测窗口中，包含在 TopK 之前的排位数量
     rank_before_k: 2
+    # 边界候选者偏离第 K 个结果的最大得分差值
     delta: 0.03
   weights:
+    # 稳定邻居差异的权重
     stable_diff: 0.25
+    # 边界反转率的权重
     boundary_flip: 0.40
+    # 得分曲线差异的权重
     curve_diff: 0.20
+    # 过滤行为差异的权重
     filter_diff: 0.15

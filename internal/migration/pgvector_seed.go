@@ -22,6 +22,10 @@ var pgvectorSeedIdentifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$
 // The configuration deliberately supports one table, one text identifier column,
 // and one vector column for the first Milvus-to-pgvector migration MVP. More
 // complex schema mapping belongs in later migration planning steps.
+//
+// PGVectorSeederConfig 控制着如何将合成的测试固件记录写入由 pgvector 驱动的 PostgreSQL 数据表中。
+// 该配置针对首个 Milvus 到 pgvector 的迁移 MVP 做了刻意限制：仅支持单一表、
+// 单一的文本标识符列以及单一的向量列。更复杂的 Schema 映射功能已规划在后续的迁移迭代中。
 type PGVectorSeederConfig struct {
 	Table        string
 	IDColumn     string
@@ -33,6 +37,10 @@ type PGVectorSeederConfig struct {
 //
 // The result is designed for CLI/job reporting so callers can confirm which
 // table and vector dimension were used and how many fixture records were written.
+//
+// PGVectorSeedResult 总结了一次合成固件数据的灌入执行结果。
+// 该结果专为 CLI 或作业报告而设计，以便调用方能够直观地确认
+// 数据被写入了哪张表、所使用的向量维度以及成功写入了多少条固件记录。
 type PGVectorSeedResult struct {
 	Table         string
 	Dimension     int
@@ -45,6 +53,11 @@ type PGVectorSeedResult struct {
 // It owns write-side database preparation for migration tests. Read/search
 // behavior remains in the pgvector connector so seeding and retrieval stay as
 // separate enterprise boundaries.
+//
+// PGVectorSeeder 负责创建 pgvector 数据表，并以更新插入 (upserts) 的方式写入合成记录。
+// 它独揽了迁移测试中“目标端数据库写入准备”的职责。与之相对的，数据读取与检索行为
+// 依然被保留在 pgvector 连接器中，从而保证了数据灌入 (seeding) 与数据检索 (retrieval)
+// 作为两道独立企业边界的清晰性。
 type PGVectorSeeder struct {
 	config PGVectorSeederConfig
 	db     pgvectorSeedDB
@@ -60,6 +73,11 @@ type pgvectorSeedDB interface {
 // A database adapter is required because the seeder performs write-side effects.
 // The adapter can be a fake in unit tests or a real pgx-backed implementation in
 // a later integration step.
+//
+// NewPGVectorSeeder 校验配置，并返回一个用于写入合成 pgvector 测试数据的灌入器。
+// 由于数据灌入会产生写入层的副作用，因此数据库适配器是必填项。
+// 适配器在单元测试中可以是假实现 (fake)；而在稍后的集成测试步骤中，
+// 它可以被替换为基于真实的 pgx 驱动的实现。
 func NewPGVectorSeeder(config PGVectorSeederConfig, db pgvectorSeedDB) (PGVectorSeeder, error) {
 	config = applyPGVectorSeederDefaults(config)
 	if err := validatePGVectorSeederConfig(config, db); err != nil {
@@ -73,6 +91,11 @@ func NewPGVectorSeeder(config PGVectorSeederConfig, db pgvectorSeedDB) (PGVector
 // It validates that the fixture dimension and every record vector match the
 // configured pgvector column dimension before executing writes. It returns a
 // summary that can be surfaced in migration CLI output.
+//
+// Seed 创建 pgvector 扩展及对应的数据表，并以更新插入 (upserts) 的方式写入所有合成记录。
+// 在执行任何写入操作之前，它会严格校验固件的整体维度以及每一条记录的向量长度，
+// 确保它们均与配置的 pgvector 列维度绝对一致。执行完毕后，它将返回一份可供迁移 CLI
+// 终端展示的摘要结果。
 func (s PGVectorSeeder) Seed(ctx context.Context, dataset fixtures.SyntheticDataset) (PGVectorSeedResult, error) {
 	if err := validatePGVectorSeedDataset(s.config, dataset); err != nil {
 		return PGVectorSeedResult{}, err

@@ -1,4 +1,7 @@
-"""Artifact-backed retrieval behavior fingerprint comparison."""
+"""Artifact-backed retrieval behavior fingerprint comparison.
+
+基于产物的检索行为指纹比对机制。
+"""
 
 import json
 from pathlib import Path
@@ -11,6 +14,8 @@ from vdb_fingerprint_engine.schemas import CompareOutput, MetricSummary
 
 class QueryFingerprint(BaseModel):
     """Represent one query-level retrieval behavior fingerprint.
+
+    代表单次查询级别的检索行为指纹画像。
 
     Args:
         query_id: Stable query identifier used to align source and target fingerprints.
@@ -28,6 +33,8 @@ class QueryFingerprint(BaseModel):
 class FingerprintArtifact(BaseModel):
     """Represent a file containing query-level retrieval behavior fingerprints.
 
+    代表包含大量查询级检索行为指纹的产物文件结构。
+
     Args:
         fingerprints: Query-level fingerprints captured from one vector database.
     """
@@ -37,6 +44,8 @@ class FingerprintArtifact(BaseModel):
 
 class AggregateMetrics(BaseModel):
     """Represent averaged artifact comparison metrics before protocol conversion.
+
+    代表在被转换为传输协议之前的、经过平均化处理的产物比对指标聚合结构。
 
     Args:
         stable_neighbor_distance: Average stable-neighbor Jaccard distance.
@@ -67,6 +76,13 @@ def compare_fingerprint_artifacts(
     rate, then combines them into a weighted fingerprint distance. Missing query
     IDs contribute a full-distance penalty so incomplete artifacts lower the
     final consistency score.
+
+    比对两份指纹产物文件，并返回规范化的指标数据。
+
+    该比对流程会根据 `query_id` 将查询指纹进行严格对齐，计算并平均化每次查询的
+    稳定邻居距离、边界候选者距离以及边界反转率，然后将它们揉合为一个加权的综合
+    指纹距离。对于缺失的查询 ID，系统将毫不留情地施加满额距离惩罚 (full-distance penalty)，
+    以此确保不完整的残缺产物会显著拉低最终的整体一致性得分。
 
     Args:
         job_id: Verification job identifier copied into the compare output.
@@ -103,6 +119,8 @@ def compare_fingerprint_artifacts(
 def load_fingerprint_artifact(path: Path) -> FingerprintArtifact:
     """Load and validate one fingerprint artifact JSON file.
 
+    加载并校验单份指纹产物 JSON 文件。
+
     Args:
         path: JSON artifact path to load.
 
@@ -126,6 +144,8 @@ def aggregate_artifact_metrics(
     target_artifact: FingerprintArtifact,
 ) -> AggregateMetrics:
     """Aggregate query-level fingerprint distances across two artifacts.
+
+    跨两份产物文件对查询级别的指纹距离执行聚合与统计。
 
     Args:
         source_artifact: Fingerprints collected from the source database.
@@ -193,6 +213,8 @@ def aggregate_artifact_metrics(
 def index_by_query_id(artifact: FingerprintArtifact) -> dict[str, QueryFingerprint]:
     """Index query fingerprints by query ID while rejecting duplicates.
 
+    按查询 ID 对查询指纹进行索引化，并主动拒绝任何重复数据。
+
     Args:
         artifact: Fingerprint artifact to index.
 
@@ -213,6 +235,8 @@ def index_by_query_id(artifact: FingerprintArtifact) -> dict[str, QueryFingerpri
 def average_with_full_penalty(values: list[float], penalty_count: int, denominator: int) -> float:
     """Average matched distances while treating missing queries as full distance.
 
+    在求取平均匹配距离的过程中，将所有缺失的查询视作满额的距离惩罚 (full distance)。
+
     Args:
         values: Distances for matched query IDs.
         penalty_count: Number of missing query penalties to add as `1.0` values.
@@ -226,6 +250,8 @@ def average_with_full_penalty(values: list[float], penalty_count: int, denominat
 
 def clamp01(value: float) -> float:
     """Clamp a numeric metric to the inclusive `[0, 1]` range.
+
+    将一项数值指标钳制 (clamp) 到受包含的 `[0, 1]` 范围之内。
 
     Args:
         value: Metric value to normalize.

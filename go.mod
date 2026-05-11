@@ -1,4 +1,4 @@
-module github.com/huxinweidev-cloud/vdb-guardian
+module github.com/h3xwave/vdb-guardian
 
 go 1.26.1
 

@@ -16,17 +16,28 @@ const (
 	//
 	// Milvus cosine scores are treated as already similarity-like, so the connector
 	// passes them through as normalized SearchHit scores where larger is better.
+	//
+	// MilvusMetricCosine 为 Milvus 集合选择余弦相似度 (cosine similarity) 检索。
+	// Milvus 返回的余弦得分本身就类似于相似度指标，因此连接器会直接将其透传
+	// 为规范化的 SearchHit 得分，且得分越大代表匹配度越好。
 	MilvusMetricCosine = "cosine"
 
 	// MilvusMetricL2 selects Euclidean distance search for Milvus collections.
 	//
 	// Milvus L2 values are distances, so the connector normalizes them to negative
 	// scores to preserve the project-wide convention that larger scores are better.
+	//
+	// MilvusMetricL2 为 Milvus 集合选择欧几里得距离 (Euclidean distance) 检索。
+	// Milvus 返回的 L2 值是距离指标，因此连接器会将其归一化为负分，
+	// 以保持项目全局统一的“得分越大越好”惯例。
 	MilvusMetricL2 = "l2"
 
 	// MilvusMetricIP selects inner-product search for Milvus collections.
 	//
 	// Inner-product scores are similarity-like and are passed through unchanged.
+	//
+	// MilvusMetricIP 为 Milvus 集合选择内积 (inner-product) 检索。
+	// 内积得分同样类似于相似度指标，因此会被原样透传。
 	MilvusMetricIP = "ip"
 )
 
@@ -39,6 +50,11 @@ var milvusIdentifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 // default collection, and simple identifier names. Collection creation, index
 // management, load orchestration, and metadata filtering are handled by later
 // migration/integration steps.
+//
+// MilvusConfig 用于配置首个 Milvus 到 pgvector 迁移 MVP 所需的极简 Milvus 连接器。
+// 初版实现刻意限制了功能：仅支持单一的向量字段、单一的 ID 字段、一个默认集合以及
+// 简单的标识符命名。至于集合的创建、索引管理、加载编排以及元数据过滤等复杂功能，
+// 将由后续的迁移/集成步骤来处理。
 type MilvusConfig struct {
 	Name              string
 	Address           string
@@ -54,6 +70,12 @@ type MilvusConfig struct {
 // Milvus adapter request and returns normalized SearchResponse values for the
 // fingerprint artifact builder. It keeps Milvus SDK details behind milvusDB so
 // core search normalization can be tested without Docker or network state.
+//
+// MilvusConnector 针对 Milvus 实现了规范化的向量检索。
+// 该连接器将通用的 SearchRequest 契约转换为精简的 Milvus 适配器请求，
+// 并返回规范化的 SearchResponse 以供指纹产物构建器使用。它将 Milvus SDK
+// 的细节隐藏在 milvusDB 接口之后，从而确保核心的检索规范化逻辑可以在
+// 摆脱 Docker 和网络状态的情况下进行单元测试。
 type MilvusConnector struct {
 	config MilvusConfig
 	db     milvusDB
@@ -291,6 +313,11 @@ func typeMilvusMetric(metric string) entity.MetricType {
 // Tests can inject a milvusDB adapter. When no adapter is injected, Address is
 // required and a placeholder SDK adapter is created so the public connector API is
 // ready for the later real Milvus SDK integration step.
+//
+// NewMilvusConnector 校验配置并返回一个极简的 Milvus 连接器。
+// 测试代码可以通过依赖注入的方式提供 milvusDB 适配器。当未注入适配器时，
+// Address (地址) 字段为必填项，此时系统会创建一个默认的 SDK 适配器占位符，
+// 从而确保公开的连接器 API 已经为后续集成真实的 Milvus SDK 做好了准备。
 func NewMilvusConnector(config MilvusConfig, db milvusDB) (MilvusConnector, error) {
 	config = applyMilvusDefaults(config)
 	if err := validateMilvusConfig(config, db); err != nil {
@@ -304,6 +331,8 @@ func NewMilvusConnector(config MilvusConfig, db milvusDB) (MilvusConnector, erro
 
 // Name returns the stable connector name used in logs, configuration, and
 // reports.
+//
+// Name 返回该连接器用于日志、配置及报告中的稳定名称。
 func (c MilvusConnector) Name() string {
 	return c.config.Name
 }
@@ -313,6 +342,10 @@ func (c MilvusConnector) Name() string {
 //
 // It returns adapter errors with Milvus context so failures are diagnosable in
 // future CLI and job reports.
+//
+// Connect 初始化 Milvus 适配器并验证基础的上下文/适配器连通性。
+// 它会将适配器抛出的错误附加上 Milvus 的上下文信息后返回，以便在未来的
+// CLI 和作业报告中能够对此类故障进行诊断。
 func (c MilvusConnector) Connect(ctx context.Context) error {
 	if c.db == nil {
 		return errors.New("milvus adapter is not configured")
@@ -328,6 +361,11 @@ func (c MilvusConnector) Connect(ctx context.Context) error {
 // If collection is empty, DefaultCollection is used. Only simple collection
 // identifiers are accepted so invalid dynamic names are rejected before reaching
 // the Milvus SDK.
+//
+// Count 返回指定 Milvus 集合中的实体数量。
+// 如果 collection 集合名为空，则回退使用 DefaultCollection (默认集合)。
+// 该方法仅接受简单的集合标识符，从而确保在将请求发送至 Milvus SDK 之前，
+// 就能主动拦截并拒绝不合规的动态名称。
 func (c MilvusConnector) Count(ctx context.Context, collection string) (int64, error) {
 	if c.db == nil {
 		return 0, errors.New("milvus adapter is not configured")
@@ -349,6 +387,11 @@ func (c MilvusConnector) Count(ctx context.Context, collection string) (int64, e
 // captured for retrieval behavior fingerprints. Cosine and IP scores are passed
 // through; L2 distances are converted to negative scores so larger values remain
 // better across all connectors.
+//
+// Search 对 Milvus 执行规范化的向量检索请求。
+// 内部将 ExpandK 作为向 Milvus 发起检索的上限 (limit)，以便捕获边界候选者，
+// 从而构建检索行为指纹。Cosine 和 IP 得分会被原样透传；而 L2 距离则被转换为
+// 负分，借此确保在所有的连接器中，“值越大代表匹配度越好” 这一规则依然成立。
 func (c MilvusConnector) Search(ctx context.Context, req SearchRequest) (SearchResponse, error) {
 	if c.db == nil {
 		return SearchResponse{}, errors.New("milvus adapter is not configured")
@@ -384,6 +427,8 @@ func (c MilvusConnector) Search(ctx context.Context, req SearchRequest) (SearchR
 }
 
 // Close releases the underlying Milvus adapter when one is configured.
+//
+// Close 方法在底层 Milvus 适配器已配置时，负责释放其占用的资源。
 func (c MilvusConnector) Close() error {
 	if c.db == nil {
 		return nil

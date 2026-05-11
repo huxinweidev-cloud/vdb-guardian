@@ -1,36 +1,57 @@
 # Example verification job for a future Milvus to pgvector run.
 # Do not place real production credentials in this file.
+#
+# 用于未来 Milvus 到 pgvector 迁移验证任务的配置示例。
+# 切勿在此文件中放置真实的生产环境凭证。
 job:
+  # 任务的名称标识符
   name: milvus-to-pgvector-demo
 
 source:
+  # 源端连接器类型
   type: milvus
+  # Milvus 的 gRPC 服务地址
   address: localhost:19530
+  # 源端待检索的集合名称
   collection: patent_demo
 
 target:
+  # 目标端连接器类型
   type: pgvector
+  # PostgreSQL 的数据库连接字符串 (DSN)
   dsn: postgresql://postgres:[REDACTED]@localhost:5433/postgres
+  # 目标端待检索的表名称
   table: items
 
 query:
+  # 业务侧可见的 TopK 结果数量
   top_k: 10
+  # 产物构建所需的扩展搜索数量，必须 >= top_k
   expand_k: 20
+  # 需要采样生成的验证查询数量
   sample_size: 100
   filters:
+    # 是否启用元数据过滤行为的采样
     enabled: true
 
 fingerprint:
   boundary:
+    # 在边界观测窗口中，包含在 TopK 之前的排位数量
     rank_before_k: 2
+    # 边界候选者偏离第 K 个结果的最大得分差值
     delta: 0.03
   weights:
+    # 稳定邻居差异的权重
     stable_diff: 0.25
+    # 边界反转率的权重
     boundary_flip: 0.40
+    # 得分曲线差异的权重
     curve_diff: 0.20
+    # 过滤行为差异的权重
     filter_diff: 0.15
 
 report:
   formats:
+    # 期望生成的验证报告格式
     - json
     - markdown

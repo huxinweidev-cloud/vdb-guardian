@@ -1,4 +1,7 @@
-"""Command-line entrypoint for the Python fingerprint engine."""
+"""Command-line entrypoint for the Python fingerprint engine.
+
+Python 指纹引擎的命令行入口点。
+"""
 
 import argparse
 import json
@@ -14,6 +17,8 @@ from vdb_fingerprint_engine.schemas import CompareInput, CompareOutput
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the command-line parser for the fingerprint engine.
+
+    构建指纹引擎的命令行解析器。
 
     Returns:
         An argparse parser that supports version output and the JSON-based
@@ -35,6 +40,12 @@ def run_compare(input_path: Path, output_path: Path) -> CompareOutput:
     The command reads a Go-generated CompareInput payload, loads the source and
     target fingerprint artifact files referenced by that payload, computes
     retrieval behavior consistency metrics, and writes a CompareOutput JSON file.
+
+    基于 JSON 协议请求，执行以产物为后盾的指纹比对。
+
+    该命令会读取由 Go 控制平面生成的 CompareInput 负载，加载该负载中所引用的源端
+    与目标端指纹产物文件，测算出检索行为的一致性指标，并最终写入一份 CompareOutput
+    的 JSON 文件。
 
     Args:
         input_path: Path to the JSON CompareInput payload created by Go.
@@ -63,6 +74,8 @@ def run_compare(input_path: Path, output_path: Path) -> CompareOutput:
 
 def main() -> int:
     """Run the fingerprint engine command line interface.
+
+    运行指纹引擎的命令行接口。
 
     Returns:
         Process exit code. A zero value indicates successful command handling.

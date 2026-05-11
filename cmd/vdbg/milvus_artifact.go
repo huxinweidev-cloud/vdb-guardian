@@ -31,6 +31,13 @@ type milvusArtifactOptions struct {
 // fixture, normalizes hits through the connector contract, and writes a
 // Python-compatible source fingerprint artifact. It does not start Docker or
 // mutate the database.
+//
+// runMilvusArtifactCommand 基于对合成固件查询的真实 Milvus 检索结果，
+// 构建出一份源端指纹产物。
+//
+// 它会连接到一个现有的 Milvus 服务，对固件中的每一条查询执行检索，通过连接器契约
+// 将命中结果规范化，并最终写入一份与 Python 完全兼容的源端指纹产物文件。
+// 它绝不会启动 Docker 容器，也绝对不会篡改数据库中的任何数据。
 func runMilvusArtifactCommand(ctx context.Context, args []string) error {
 	return runMilvusArtifactWithFactory(ctx, args, newMilvusSearchConnector)
 }

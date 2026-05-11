@@ -833,3 +833,367 @@ AI Agent 在本项目中工作时必须：
 4. 使用独立 commit 或在 commit message 中明确说明。
 
 任何降低质量门槛的变更必须经过项目负责人明确批准。
+
+---
+
+## 21. CI/CD 自动化规范
+
+### 21.1 强制 CI 检查
+
+所有 Pull Request 必须通过以下 CI 检查才能合并：
+
+1. Go 测试（`go test -v -race -coverprofile=coverage.txt ./...`）
+2. Python 测试（`cd python && uv run pytest --cov=vdb_fingerprint_engine`）
+3. Go 格式检查（`gofmt -l ./cmd ./internal`）
+4. Python 格式检查（`cd python && uv run ruff format --check .`）
+5. Go lint（`golangci-lint run`）
+6. Python lint（`cd python && uv run ruff check .`）
+
+### 21.2 覆盖率要求
+
+- 覆盖率不得低于当前水平
+- 新增代码覆盖率必须 ≥80%
+- 核心模块（jobs, connectors, engine）必须 ≥90%
+- 覆盖率报告自动上传到 Codecov
+
+### 21.3 CI 配置文件
+
+CI 配置文件位于 `.github/workflows/ci.yml`，包含：
+
+- Go 版本：1.26.1
+- Python 版本：3.11
+- 使用 uv 管理 Python 依赖
+- 使用 golangci-lint 进行 Go 静态分析
+- 并行运行测试和检查以提高效率
+
+### 21.4 禁止事项
+
+禁止：
+
+- 跳过 CI 检查直接合并
+- 使用 `[skip ci]` 绕过检查（除非是纯文档更新且经过批准）
+- 降低覆盖率门槛
+- 忽略 CI 失败
+
+---
+
+## 22. Pre-commit Hooks 规范
+
+### 22.1 强制安装
+
+本地开发必须安装 pre-commit hooks：
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+### 22.2 Hooks 内容
+
+Pre-commit hooks 自动执行：
+
+1. Go 格式化（gofmt）
+2. Go 静态检查（go vet）
+3. Python 格式化（ruff format）
+4. Python lint（ruff check）
+5. 尾随空格清理
+6. 文件末尾换行符
+7. YAML 语法检查
+8. 大文件检查（>1MB）
+9. 合并冲突标记检查
+
+### 22.3 手动运行
+
+提交前可手动运行所有 hooks：
+
+```bash
+pre-commit run --all-files
+```
+
+### 22.4 绕过 Hooks
+
+禁止使用 `--no-verify` 绕过 hooks，除非：
+
+1. 紧急修复且已获批准
+2. Hooks 本身存在问题需要修复
+
+即使绕过本地 hooks，CI 仍会强制检查。
+
+---
+
+## 23. 代码覆盖率规范
+
+### 23.1 覆盖率要求
+
+- 新增代码覆盖率必须 ≥80%
+- 核心模块（jobs, connectors, engine）必须 ≥90%
+- PR 必须附带覆盖率报告
+- 使用 Codecov 自动检查和可视化
+
+### 23.2 Go 覆盖率
+
+运行 Go 测试并生成覆盖率报告：
+
+```bash
+go test -coverprofile=coverage.txt -covermode=atomic ./...
+go tool cover -html=coverage.txt
+```
+
+### 23.3 Python 覆盖率
+
+运行 Python 测试并生成覆盖率报告：
+
+```bash
+cd python
+uv run pytest --cov=vdb_fingerprint_engine --cov-report=html --cov-report=term
+```
+
+### 23.4 覆盖率豁免
+
+以下情况可豁免覆盖率要求：
+
+1. 纯文档更新
+2. 配置文件修改
+3. 测试代码本身
+4. 已废弃但暂未删除的代码（需标注 `// Deprecated`）
+
+---
+
+## 24. Go 依赖管理规范
+
+### 24.1 依赖添加
+
+新增依赖必须：
+
+1. 说明添加理由
+2. 评估替代方案
+3. 检查许可证兼容性
+4. 检查安全漏洞（使用 `go list -m -u all`）
+5. 更新 `go.mod` 和 `go.sum`
+
+### 24.2 依赖更新
+
+每月至少运行一次：
+
+```bash
+go get -u ./...
+go mod tidy
+make test
+```
+
+### 24.3 禁止事项
+
+禁止：
+
+- 使用 `replace` 指令指向本地路径（除非临时调试）
+- 引入未维护的依赖（最后更新 >2 年）
+- 引入有已知高危漏洞的依赖
+- 提交不一致的 `go.sum`
+
+### 24.4 Dependabot
+
+项目使用 Dependabot 自动创建依赖更新 PR：
+
+- Go modules：每周检查
+- GitHub Actions：每周检查
+- Docker 镜像：每月检查
+
+---
+
+## 25. Python 依赖管理规范
+
+### 25.1 依赖版本约束
+
+依赖版本必须：
+
+1. 锁定到 minor 版本（如 `>=2.7,<2.11`）
+2. 不得跨越大版本（如 `>=2.0,<3.0` 过于宽松）
+3. 提交 `uv.lock` 到仓库
+4. 生产环境使用 `uv sync --frozen`
+
+### 25.2 依赖添加
+
+新增依赖必须：
+
+```bash
+cd python
+# 添加生产依赖
+uv add "package>=x.y,<x.z"
+# 添加开发依赖
+uv add --dev "package>=x.y,<x.z"
+# 同步并测试
+uv sync
+uv run pytest
+```
+
+### 25.3 依赖更新
+
+定期更新依赖：
+
+```bash
+cd python
+uv lock --upgrade
+uv sync
+uv run pytest
+```
+
+### 25.4 禁止事项
+
+禁止：
+
+- 使用全局 `pip install` 安装项目依赖
+- 不提交 `uv.lock`
+- 使用过于宽松的版本约束
+- 引入未维护的依赖
+
+---
+
+## 26. 性能基准测试规范
+
+### 26.1 Go Benchmark
+
+Connector 查询必须有 benchmark 测试：
+
+```go
+func BenchmarkMilvusSearch(b *testing.B) {
+    // Setup
+    connector := setupMilvusConnector()
+    query := generateTestQuery()
+    
+    b.ResetTimer()
+    for i := 0; i < b.N; i++ {
+        _, err := connector.Search(context.Background(), query, 10)
+        if err != nil {
+            b.Fatal(err)
+        }
+    }
+}
+```
+
+运行 benchmark：
+
+```bash
+go test -bench=. -benchmem ./internal/connectors/
+```
+
+### 26.2 Python Benchmark
+
+指纹算法必须测试不同规模：
+
+```python
+import pytest
+
+@pytest.mark.benchmark
+def test_fingerprint_1k(benchmark):
+    result = benchmark(compute_fingerprint, vectors_1k)
+    assert result is not None
+
+@pytest.mark.benchmark
+def test_fingerprint_10k(benchmark):
+    result = benchmark(compute_fingerprint, vectors_10k)
+    assert result is not None
+```
+
+### 26.3 性能退化检测
+
+- 性能退化超过 20% 必须说明原因
+- 关键路径性能退化需要优化或回退
+- Benchmark 结果应记录在 PR 描述中
+
+---
+
+## 27. Docker 镜像构建规范
+
+### 27.1 Dockerfile 要求
+
+Docker 镜像必须：
+
+1. 使用多阶段构建
+2. 基础镜像必须是官方镜像或内部审核镜像
+3. 禁止使用 `latest` 标签
+4. 运行用户不得是 root
+5. 最小化镜像层数
+
+示例：
+
+```dockerfile
+# Build stage
+FROM golang:1.26.1-alpine AS builder
+WORKDIR /build
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -o vdbg ./cmd/vdbg
+
+# Runtime stage
+FROM alpine:3.19
+RUN addgroup -g 1000 vdbg && adduser -D -u 1000 -G vdbg vdbg
+USER vdbg
+COPY --from=builder /build/vdbg /usr/local/bin/
+ENTRYPOINT ["vdbg"]
+```
+
+### 27.2 安全扫描
+
+镜像必须通过 Trivy 扫描：
+
+```bash
+docker build -t vdb-guardian:test .
+trivy image vdb-guardian:test
+```
+
+### 27.3 镜像标签
+
+镜像标签规范：
+
+- `vdb-guardian:v0.1.0` - 版本标签
+- `vdb-guardian:v0.1.0-alpine` - 变体标签
+- `vdb-guardian:sha-abc1234` - Git commit 标签
+- 禁止使用 `latest` 标签
+
+---
+
+## 28. 变更日志规范
+
+### 28.1 CHANGELOG.md 维护
+
+项目维护 `CHANGELOG.md`，使用 [Keep a Changelog](https://keepachangelog.com/) 格式。
+
+### 28.2 更新时机
+
+每次 PR 合并前必须更新 `CHANGELOG.md` 的 `[Unreleased]` 部分。
+
+### 28.3 分类
+
+变更按以下类别记录：
+
+- **Added**: 新功能
+- **Changed**: 现有功能的变更
+- **Deprecated**: 即将废弃的功能
+- **Removed**: 已删除的功能
+- **Fixed**: Bug 修复
+- **Security**: 安全相关修复
+
+### 28.4 发布时
+
+发布新版本时：
+
+1. 将 `[Unreleased]` 内容移到新版本号下
+2. 添加发布日期
+3. 创建新的空 `[Unreleased]` 部分
+4. 更新底部的版本链接
+
+示例：
+
+```markdown
+## [Unreleased]
+
+## [0.2.0] - 2026-05-15
+
+### Added
+- Qdrant connector implementation
+
+### Fixed
+- Memory leak in Milvus connector
+```
+

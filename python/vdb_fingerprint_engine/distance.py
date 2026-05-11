@@ -8,6 +8,12 @@ def jaccard_distance(left: set[str], right: set[str]) -> float:
     boundary-candidate sets. A value of 0.0 means the sets are equivalent, while
     a value of 1.0 means they have no overlap.
 
+    计算两个标识符集合之间的归一化杰卡德距离 (Jaccard distance)。
+
+    该指标用于量化稳定邻居集合 (stable-neighbor sets) 或边界候选者集合
+    (boundary-candidate sets) 之间的差异。值为 0.0 表示集合完全等价，
+    而值为 1.0 表示它们毫无交集。
+
     Args:
         left: First set of vector identifiers.
         right: Second set of vector identifiers.
@@ -33,6 +39,12 @@ def boundary_flip_rate(
     metric is central to vdb-guardian because it detects migration drift that a
     coarse data-count check or average benchmark may miss.
 
+    测算边界候选者跨越 TopK 可见性边界的频率 (边界反转率)。
+
+    当一个候选者在源端 TopK 中可见但在目标端 TopK 中不可见时，或者反之在目标端可见但在
+    源端不可见时，就会发生边界反转 (boundary flip)。该指标是 vdb-guardian 的核心，
+    因为它能够极其敏锐地探测到那些被粗粒度的数据量核对或宏观基准测试所遗漏的迁移行为漂移。
+
     Args:
         source_top_k: Identifiers visible in the source database topK result.
         target_top_k: Identifiers visible in the target database topK result.
@@ -56,6 +68,8 @@ def weighted_fingerprint_distance(
     *, components: dict[str, float], weights: dict[str, float]
 ) -> float:
     """Combine named fingerprint-distance components with normalized weights.
+
+    结合已命名的指纹距离分量与归一化的权重，计算出综合指纹距离。
 
     Args:
         components: Mapping from component names to normalized distances.

@@ -12,6 +12,10 @@ import (
 // SearchResult contains normalized search hits for one verification query. It
 // is the connector-to-fingerprint boundary used before source and target results
 // are transformed into Python-compatible retrieval behavior fingerprint artifacts.
+//
+// SearchResult 包含了单条验证查询的规范化命中结果。
+// 它是连接器与指纹构建器之间的桥梁边界，用于将源端与目标端的原始检索结果，
+// 转化为兼容 Python 规范的检索行为指纹产物。
 type SearchResult struct {
 	// QueryID is the stable identifier used to align source and target query behavior.
 	QueryID string
@@ -22,6 +26,10 @@ type SearchResult struct {
 // SearchHit describes one normalized vector search hit. Connectors should map
 // database-specific hit IDs, ranks, and scores into this structure before the
 // fingerprint artifact builder derives topK, stable-neighbor, and boundary sets.
+//
+// SearchHit 描述了一条规范化的向量检索命中记录。
+// 连接器应当将特定数据库的命中 ID、排名和得分映射为此结构，然后指纹产物构建器
+// 会基于此结构衍生出 TopK 集合、稳定邻居集合以及边界候选者集合。
 type SearchHit struct {
 	// ID is the stable vector or document identifier returned by the database.
 	ID string
@@ -34,6 +42,10 @@ type SearchHit struct {
 // BuildOptions configures rank-window fingerprint artifact generation. The
 // first implementation intentionally uses ranks rather than score deltas so it
 // remains portable across databases with different score scales.
+//
+// BuildOptions 用于配置基于排位窗口 (rank-window) 的指纹产物生成规则。
+// 初版的实现刻意使用了排位 (ranks) 而非得分差值 (score deltas)，
+// 这样可以确保产物在面对具有不同得分刻度尺的异构数据库时依然保持通用性 (portable)。
 type BuildOptions struct {
 	// TopK controls how many leading hits become visible topK identifiers.
 	TopK int
@@ -46,6 +58,9 @@ type BuildOptions struct {
 // Artifact is the JSON file shape consumed by the Python fingerprint engine.
 // It contains query-level retrieval behavior fingerprints collected from one
 // vector database.
+//
+// Artifact 是供 Python 指纹引擎消费的 JSON 文件结构。
+// 它包含了从单一向量数据库中收集到的、在查询级别的检索行为指纹。
 type Artifact struct {
 	// Fingerprints contains one retrieval behavior fingerprint per query.
 	Fingerprints []QueryFingerprint `json:"fingerprints"`
@@ -54,6 +69,9 @@ type Artifact struct {
 // QueryFingerprint captures the retrieval behavior for one query in a format
 // shared between Go-generated connector artifacts and the Python comparison
 // engine.
+//
+// QueryFingerprint 捕获了针对单次查询的检索行为画像，
+// 该格式是 Go 语言生成的连接器产物与 Python 比对引擎之间共享的契约。
 type QueryFingerprint struct {
 	// QueryID is the stable query identifier used for source/target alignment.
 	QueryID string `json:"query_id"`
@@ -69,6 +87,10 @@ type QueryFingerprint struct {
 // fingerprint artifact. It validates query uniqueness, required identifiers, and
 // option bounds before deriving stable-neighbor, boundary-candidate, and topK ID
 // lists from rank-ordered hits.
+//
+// BuildArtifact 将规范化的搜索结果转换为兼容 Python 的指纹产物。
+// 在从排序后的命中结果中推导出稳定邻居、边界候选者以及 TopK ID 列表之前，
+// 它会对查询 ID 的唯一性、必需的标识符以及配置选项的边界合法性进行强校验。
 func BuildArtifact(results []SearchResult, options BuildOptions) (Artifact, error) {
 	if err := validateBuildOptions(options); err != nil {
 		return Artifact{}, err
@@ -88,6 +110,10 @@ func BuildArtifact(results []SearchResult, options BuildOptions) (Artifact, erro
 // WriteArtifact writes a fingerprint artifact JSON file with restrictive file
 // permissions. The output uses snake_case field names so the Python engine can
 // consume it directly through the documented artifact protocol.
+//
+// WriteArtifact 以极其严格的文件权限将指纹产物写入 JSON 文件中。
+// 输出的内容强制使用蛇形命名法 (snake_case) 作为字段名，以便 Python 引擎
+// 能够通过既定的产物协议规范直接将其消费入库。
 func WriteArtifact(path string, artifact Artifact) error {
 	if path == "" {
 		return errors.New("artifact path must not be empty")
