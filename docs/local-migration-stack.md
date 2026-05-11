@@ -264,4 +264,4 @@ scripts/check-migration-stack.sh milvus-port
 
 ## Current limitations
 
-This stack now supports validating the pgvector target-side seed, search, and fingerprint artifact loops, source-side Milvus fixture seeding, search, and fingerprint artifact loops, plus source/target artifact comparison. It does not yet run Milvus-to-pgvector migrations or execute the full migrate-and-verify workflow. Those capabilities will be added in the migration MVP steps that follow.
+This stack now supports validating the pgvector target-side seed, search, and fingerprint artifact loops, source-side Milvus fixture seeding, search, and fingerprint artifact loops, plus source/target artifact comparison. It also has the first tested database-neutral Milvus-to-pgvector migration runner boundary in place. It does not yet run the real source-to-target migration or execute the full migrate-and-verify workflow. Those capabilities will be added in the migration MVP steps that follow.

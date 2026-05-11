@@ -44,6 +44,7 @@ Implemented in this scaffold:
 - `vdbg search-pgvector` real pgvector search smoke CLI.
 - `vdbg build-pgvector-artifact` real pgvector fingerprint artifact CLI.
 - `vdbg compare-artifacts` real source/target fingerprint artifact comparison CLI.
+- Internal minimal Milvus-to-pgvector migration runner boundary.
 - Synthetic vector dataset generator.
 - Fingerprint artifact builder.
 - Fingerprint engine interface.
@@ -60,6 +61,7 @@ Planned but not yet implemented:
 
 - Milvus seed CLI integration tests against the local migration stack.
 - pgvector seed CLI integration tests against the local migration stack.
+- Real migration CLI command backed by the internal runner.
 - Real migration and verification CLI command.
 - API routes.
 - Persistent job storage.

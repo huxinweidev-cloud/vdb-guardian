@@ -73,6 +73,7 @@ Python 检索行为指纹算法引擎
 - `vdbg search-pgvector` 真实 pgvector 检索冒烟 CLI；
 - `vdbg build-pgvector-artifact` 真实 pgvector 指纹 artifact CLI；
 - `vdbg compare-artifacts` 真实源/目标指纹 artifact 对比 CLI；
+- 最小化 Milvus→pgvector 迁移运行器边界；
 - 合成向量数据生成器；
 - 指纹 artifact builder：`internal/fingerprints`；
 - 指纹引擎接口：`internal/engine`；
@@ -95,7 +96,8 @@ Python 检索行为指纹算法引擎
 
 - Milvus seed CLI 针对本地 migration stack 的集成测试；
 - pgvector seed CLI 针对本地 migration stack 的集成测试；
-- 真实迁移与对比 CLI；
+- 基于内部迁移运行器的真实迁移 CLI；
+- 一键真实迁移与对比 CLI；
 - HTTP API 路由；
 - 持久化 Job Store；
 - 完整 Markdown / JSON 报告生成；
