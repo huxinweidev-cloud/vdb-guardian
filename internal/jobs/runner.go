@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/huxinweidev-cloud/vdb-guardian/internal/engine"
+	"github.com/h3xwave/vdb-guardian/internal/engine"
 )
 
 // VerificationRunner executes a local artifact-backed verification job. It is

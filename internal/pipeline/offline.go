@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/huxinweidev-cloud/vdb-guardian/internal/connectors"
-	"github.com/huxinweidev-cloud/vdb-guardian/internal/fingerprints"
-	"github.com/huxinweidev-cloud/vdb-guardian/internal/jobs"
+	"github.com/h3xwave/vdb-guardian/internal/connectors"
+	"github.com/h3xwave/vdb-guardian/internal/fingerprints"
+	"github.com/h3xwave/vdb-guardian/internal/jobs"
 )
 
 // OfflinePipeline orchestrates a database-free local verification flow. It reads

@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/huxinweidev-cloud/vdb-guardian/internal/version"
+	"github.com/h3xwave/vdb-guardian/internal/version"
 )
 
 // main is the future API server entrypoint. The first scaffold intentionally

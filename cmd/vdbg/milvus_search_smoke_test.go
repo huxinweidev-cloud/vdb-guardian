@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/huxinweidev-cloud/vdb-guardian/internal/connectors"
-	"github.com/huxinweidev-cloud/vdb-guardian/internal/fixtures"
+	"github.com/h3xwave/vdb-guardian/internal/connectors"
+	"github.com/h3xwave/vdb-guardian/internal/fixtures"
 )
 
 func TestParseSearchMilvusOptions(t *testing.T) {

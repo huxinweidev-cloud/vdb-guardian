@@ -6,7 +6,7 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/huxinweidev-cloud/vdb-guardian/internal/connectors"
+	"github.com/h3xwave/vdb-guardian/internal/connectors"
 )
 
 type searchMilvusOptions struct {

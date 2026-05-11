@@ -150,7 +150,7 @@ func readCompareOutput(path string) (CompareOutput, error) {
 	}
 	var payload compareOutputJSON
 	if err := json.Unmarshal(data, &payload); err != nil {
-		return CompareOutput{}, fmt.Errorf("decode engine output %q: %w", err)
+		return CompareOutput{}, fmt.Errorf("decode engine output %q: %w", path, err)
 	}
 	return CompareOutput{
 		JobID:            payload.JobID,

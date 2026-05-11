@@ -7,7 +7,7 @@ import (
 	"math"
 	"regexp"
 
-	"github.com/huxinweidev-cloud/vdb-guardian/internal/fixtures"
+	"github.com/h3xwave/vdb-guardian/internal/fixtures"
 )
 
 const maxMilvusSeedDimension = 2000

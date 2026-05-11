@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/huxinweidev-cloud/vdb-guardian/internal/version"
+	"github.com/h3xwave/vdb-guardian/internal/version"
 )
 
 // main is the CLI entrypoint for local and automation-driven vdb-guardian usage.

@@ -6,8 +6,8 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/huxinweidev-cloud/vdb-guardian/internal/fixtures"
-	"github.com/huxinweidev-cloud/vdb-guardian/internal/migration"
+	"github.com/h3xwave/vdb-guardian/internal/fixtures"
+	"github.com/h3xwave/vdb-guardian/internal/migration"
 )
 
 type seedMilvusOptions struct {

@@ -10,11 +10,11 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/huxinweidev-cloud/vdb-guardian/internal/connectors"
-	"github.com/huxinweidev-cloud/vdb-guardian/internal/engine"
-	"github.com/huxinweidev-cloud/vdb-guardian/internal/fingerprints"
-	"github.com/huxinweidev-cloud/vdb-guardian/internal/jobs"
-	"github.com/huxinweidev-cloud/vdb-guardian/internal/pipeline"
+	"github.com/h3xwave/vdb-guardian/internal/connectors"
+	"github.com/h3xwave/vdb-guardian/internal/engine"
+	"github.com/h3xwave/vdb-guardian/internal/fingerprints"
+	"github.com/h3xwave/vdb-guardian/internal/jobs"
+	"github.com/h3xwave/vdb-guardian/internal/pipeline"
 )
 
 type offlineVerifyOptions struct {

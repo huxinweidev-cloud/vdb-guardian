@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/huxinweidev-cloud/vdb-guardian/internal/fixtures"
+	"github.com/h3xwave/vdb-guardian/internal/fixtures"
 )
 
 const maxPGVectorSeedDimension = 2000

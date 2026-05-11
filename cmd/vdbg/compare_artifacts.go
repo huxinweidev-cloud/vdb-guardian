@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/huxinweidev-cloud/vdb-guardian/internal/engine"
-	"github.com/huxinweidev-cloud/vdb-guardian/internal/jobs"
+	"github.com/h3xwave/vdb-guardian/internal/engine"
+	"github.com/h3xwave/vdb-guardian/internal/jobs"
 )
 
 type compareArtifactsOptions struct {

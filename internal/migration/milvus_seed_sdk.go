@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/huxinweidev-cloud/vdb-guardian/internal/fixtures"
+	"github.com/h3xwave/vdb-guardian/internal/fixtures"
 	milvusclient "github.com/milvus-io/milvus-sdk-go/v2/client"
 	"github.com/milvus-io/milvus-sdk-go/v2/entity"
 )

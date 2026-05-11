@@ -1,6 +1,6 @@
 module github.com/h3xwave/vdb-guardian
 
-go 1.26.1
+go 1.23
 
 require (
 	github.com/jackc/pgx/v5 v5.7.2

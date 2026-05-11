@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/huxinweidev-cloud/vdb-guardian/internal/engine"
+	"github.com/h3xwave/vdb-guardian/internal/engine"
 )
 
 func TestParseCompareArtifactsOptions(t *testing.T) {
