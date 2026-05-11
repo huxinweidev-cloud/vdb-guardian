@@ -91,6 +91,39 @@ Implemented:
 - Summary output with record counts and primary consistency metrics.
 - Injected-step unit tests for orchestration and failure short-circuiting.
 
+## Verified local smoke
+
+A local migration stack smoke run against `testdata/migration/synthetic-small.json` produced:
+
+```text
+records_read: 100
+records_written: 100
+consistency_score: 1.000000
+fingerprint_distance: 0.000000
+matched_queries: 10
+missing_source_queries: 0
+missing_target_queries: 0
+```
+
+The generated result artifact is shaped like:
+
+```json
+{
+  "job_id": "migrate-and-verify-smoke",
+  "state": "SUCCEEDED",
+  "consistency_score": 1,
+  "metrics": {
+    "FingerprintDistance": 0,
+    "StableNeighborDistance": 0,
+    "BoundaryCandidateDistance": 0,
+    "BoundaryFlipRate": 0,
+    "MatchedQueryCount": 10,
+    "MissingSourceQueryCount": 0,
+    "MissingTargetQueryCount": 0
+  }
+}
+```
+
 Not implemented yet:
 
 - Production checkpointing.

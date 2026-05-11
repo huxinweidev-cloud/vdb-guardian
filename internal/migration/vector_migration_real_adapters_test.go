@@ -3,6 +3,7 @@ package migration
 import (
 	"context"
 	"errors"
+	"io"
 	"reflect"
 	"strings"
 	"testing"
@@ -18,8 +19,12 @@ func TestNewMilvusVectorMigrationSourceCreatesDefaultSDKReader(t *testing.T) {
 	if source.reader == nil {
 		t.Fatal("expected default Milvus migration reader")
 	}
-	if _, ok := source.reader.(*milvusSDKMigrationReader); !ok {
+	reader, ok := source.reader.(*milvusSDKMigrationReader)
+	if !ok {
 		t.Fatalf("expected *milvusSDKMigrationReader, got %T", source.reader)
+	}
+	if reader.batchSize != 1 {
+		t.Fatalf("expected conservative Milvus iterator batch size 1 to avoid dropping small collections, got %d", reader.batchSize)
 	}
 }
 
@@ -36,9 +41,10 @@ func TestNewPGVectorMigrationTargetCreatesDefaultPGXWriter(t *testing.T) {
 	}
 }
 
-func TestMilvusSDKMigrationReaderReadsRecords(t *testing.T) {
+func TestMilvusSDKMigrationReaderReadsRecordsUntilEOF(t *testing.T) {
 	ctx := context.Background()
 	client := &fakeMilvusMigrationSDKClient{
+		count: 3,
 		batches: []milvusMigrationQueryBatch{
 			{
 				Records: []VectorMigrationRecord{
@@ -46,7 +52,11 @@ func TestMilvusSDKMigrationReaderReadsRecords(t *testing.T) {
 					{ID: "vec-2", Vector: []float64{0.3, 0.4}},
 				},
 			},
-			{},
+			{
+				Records: []VectorMigrationRecord{
+					{ID: "vec-3", Vector: []float64{0.5, 0.6}},
+				},
+			},
 		},
 	}
 	reader := newMilvusSDKMigrationReaderWithClientFactory("localhost:19530", 2, func(context.Context, string) (milvusMigrationSDKClient, error) {
@@ -60,15 +70,16 @@ func TestMilvusSDKMigrationReaderReadsRecords(t *testing.T) {
 	want := []VectorMigrationRecord{
 		{ID: "vec-1", Vector: []float64{0.1, 0.2}},
 		{ID: "vec-2", Vector: []float64{0.3, 0.4}},
+		{ID: "vec-3", Vector: []float64{0.5, 0.6}},
 	}
 	if !reflect.DeepEqual(records, want) {
 		t.Fatalf("records mismatch\nwant: %#v\n got: %#v", want, records)
 	}
-	if client.requests[0].Collection != "items" || client.requests[0].IDField != "id" || client.requests[0].VectorField != "embedding" || client.requests[0].BatchSize != 2 {
+	if client.requests[0].Collection != "items" || client.requests[0].IDField != "id" || client.requests[0].VectorField != "embedding" || client.requests[0].BatchSize != 3 || !client.requests[0].AllFields {
 		t.Fatalf("unexpected request: %#v", client.requests[0])
 	}
 	if !client.closed {
-		t.Fatal("expected Milvus query iterator to be closed")
+		t.Fatal("expected Milvus migration query reader to be closed")
 	}
 }
 
@@ -83,10 +94,10 @@ func TestMilvusSDKMigrationReaderWrapsErrors(t *testing.T) {
 			return nil, errors.New("dial failed")
 		}, want: "connect milvus migration reader"},
 		{name: "query", factory: func(context.Context, string) (milvusMigrationSDKClient, error) {
-			return &fakeMilvusMigrationSDKClient{queryErr: errors.New("query failed")}, nil
-		}, want: "create milvus query iterator"},
+			return &fakeMilvusMigrationSDKClient{count: 1, queryErr: errors.New("query failed")}, nil
+		}, want: "create milvus migration query"},
 		{name: "next", factory: func(context.Context, string) (milvusMigrationSDKClient, error) {
-			return &fakeMilvusMigrationSDKClient{nextErr: errors.New("next failed")}, nil
+			return &fakeMilvusMigrationSDKClient{count: 1, nextErr: errors.New("next failed")}, nil
 		}, want: "read milvus query batch"},
 	}
 	for _, tt := range tests {
@@ -144,9 +155,18 @@ func TestPGXPGVectorMigrationWriterValidatesVectorsAndWrapsExecError(t *testing.
 type fakeMilvusMigrationSDKClient struct {
 	requests []milvusMigrationQueryRequest
 	batches  []milvusMigrationQueryBatch
+	count    int
+	countErr error
 	queryErr error
 	nextErr  error
 	closed   bool
+}
+
+func (c *fakeMilvusMigrationSDKClient) Count(ctx context.Context, collection string) (int, error) {
+	if c.countErr != nil {
+		return 0, c.countErr
+	}
+	return c.count, nil
 }
 
 func (c *fakeMilvusMigrationSDKClient) Query(ctx context.Context, req milvusMigrationQueryRequest) (milvusMigrationQueryIterator, error) {
@@ -169,7 +189,7 @@ func (i *fakeMilvusMigrationQueryIterator) Next(ctx context.Context) (milvusMigr
 		return milvusMigrationQueryBatch{}, i.client.nextErr
 	}
 	if i.index >= len(i.client.batches) {
-		return milvusMigrationQueryBatch{}, nil
+		return milvusMigrationQueryBatch{}, io.EOF
 	}
 	batch := i.client.batches[i.index]
 	i.index++

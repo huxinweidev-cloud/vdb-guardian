@@ -2,7 +2,7 @@
 
 `vdbg migrate` runs the first real Milvus-to-pgvector record transfer path.
 
-It reads normalized records from a Milvus source collection through the Milvus SDK query iterator and writes them into a pgvector target table through the pgx-backed writer.
+It reads normalized records from a Milvus source collection through the Milvus SDK query path and writes them into a pgvector target table through the pgx-backed writer.
 
 The command does not start Docker, create services, build fingerprint artifacts, or compare retrieval behavior. It assumes the local migration stack or equivalent disposable test databases are already running.
 
@@ -63,7 +63,6 @@ Implemented:
 
 Not implemented yet:
 
-- One-shot `migrate-and-verify` orchestration.
 - Source/target fingerprint artifact generation inside this command.
 - Comparison result artifact generation inside this command.
 - Metadata fields.

@@ -16,7 +16,7 @@ Implemented:
 - Target writer boundary accepting normalized records.
 - Tested Milvus migration source adapter boundary.
 - Tested pgvector migration target adapter boundary.
-- Real Milvus SDK query-iterator migration reader.
+- Real Milvus SDK query-backed migration reader.
 - Real pgx-backed pgvector migration writer.
 - Defensive vector copying before writes.
 - Context cancellation checks.
