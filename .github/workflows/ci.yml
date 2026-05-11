@@ -32,6 +32,7 @@ jobs:
       - name: Upload Go coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
+          token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage.txt
           flags: go
           name: go-coverage
@@ -104,6 +105,7 @@ jobs:
       - name: Upload Python coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
+          token: ${{ secrets.CODECOV_TOKEN }}
           files: ./python/coverage.xml
           flags: python
           name: python-coverage
