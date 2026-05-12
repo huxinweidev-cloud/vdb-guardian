@@ -13,6 +13,9 @@ import (
 
 const defaultMilvusMigrationBatchSize = 1
 
+// milvusMigrationQueryRequest defines the parameters for querying records from Milvus.
+//
+// milvusMigrationQueryRequest 定义了从 Milvus 查询记录的参数。
 type milvusMigrationQueryRequest struct {
 	Collection  string
 	IDField     string
@@ -21,15 +24,24 @@ type milvusMigrationQueryRequest struct {
 	AllFields   bool
 }
 
+// milvusMigrationQueryBatch represents a batch of normalized records returned by a query.
+//
+// milvusMigrationQueryBatch 代表了查询返回的一批规范化记录。
 type milvusMigrationQueryBatch struct {
 	Records []VectorMigrationRecord
 }
 
+// milvusMigrationQueryIterator abstracts the iteration over batches of query results.
+//
+// milvusMigrationQueryIterator 抽象了对查询结果批次的迭代操作。
 type milvusMigrationQueryIterator interface {
 	Next(ctx context.Context) (milvusMigrationQueryBatch, error)
 	Close()
 }
 
+// milvusMigrationSDKClient abstracts the underlying Milvus SDK operations needed for migration.
+//
+// milvusMigrationSDKClient 抽象了迁移所需的底层 Milvus SDK 操作。
 type milvusMigrationSDKClient interface {
 	Count(ctx context.Context, collection string) (int, error)
 	Query(ctx context.Context, req milvusMigrationQueryRequest) (milvusMigrationQueryIterator, error)
@@ -38,12 +50,18 @@ type milvusMigrationSDKClient interface {
 
 type milvusMigrationSDKClientFactory func(ctx context.Context, address string) (milvusMigrationSDKClient, error)
 
+// milvusSDKMigrationReader is a real Milvus SDK implementation of the migration reader.
+//
+// milvusSDKMigrationReader 是迁移读取器的真实 Milvus SDK 实现。
 type milvusSDKMigrationReader struct {
 	address   string
 	batchSize int
 	factory   milvusMigrationSDKClientFactory
 }
 
+// newMilvusSDKMigrationReader creates a new reader configured with the real Milvus client.
+//
+// newMilvusSDKMigrationReader 创建一个使用真实 Milvus 客户端配置的新读取器。
 func newMilvusSDKMigrationReader(address string) *milvusSDKMigrationReader {
 	return newMilvusSDKMigrationReaderWithClientFactory(address, defaultMilvusMigrationBatchSize, newRealMilvusMigrationSDKClient)
 }
@@ -55,6 +73,11 @@ func newMilvusSDKMigrationReaderWithClientFactory(address string, batchSize int,
 	return &milvusSDKMigrationReader{address: address, batchSize: batchSize, factory: factory}
 }
 
+// ReadMilvusMigrationRecords fetches all records from the specified Milvus collection,
+// automatically mapping them to the neutral VectorMigrationRecord format.
+//
+// ReadMilvusMigrationRecords 从指定的 Milvus 集合中拉取所有记录，
+// 并自动将它们映射为中立的 VectorMigrationRecord 格式。
 func (r *milvusSDKMigrationReader) ReadMilvusMigrationRecords(ctx context.Context, collection, idField, vectorField string) ([]VectorMigrationRecord, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -99,6 +122,9 @@ func (r *milvusSDKMigrationReader) ReadMilvusMigrationRecords(ctx context.Contex
 	return records, nil
 }
 
+// realMilvusMigrationSDKClient implements milvusMigrationSDKClient using the official Go SDK.
+//
+// realMilvusMigrationSDKClient 使用官方 Go SDK 实现了 milvusMigrationSDKClient 接口。
 type realMilvusMigrationSDKClient struct {
 	client milvusclient.Client
 }
@@ -142,6 +168,9 @@ func (c realMilvusMigrationSDKClient) Close(ctx context.Context) error {
 	return c.client.Close()
 }
 
+// realMilvusMigrationResultSetIterator iterates over Milvus SDK query results.
+//
+// realMilvusMigrationResultSetIterator 迭代处理 Milvus SDK 查询结果。
 type realMilvusMigrationResultSetIterator struct {
 	resultSet   milvusclient.ResultSet
 	idField     string
@@ -183,10 +212,16 @@ func (i *realMilvusMigrationResultSetIterator) Next(ctx context.Context) (milvus
 
 func (i *realMilvusMigrationResultSetIterator) Close() {}
 
+// pgvectorMigrationDB abstracts the execution of PostgreSQL queries.
+//
+// pgvectorMigrationDB 抽象了 PostgreSQL 查询的执行逻辑。
 type pgvectorMigrationDB interface {
 	Exec(ctx context.Context, sql string, args ...any) error
 }
 
+// pgxPGVectorMigrationWriter is a real pgx-backed pgvector migration target writer.
+//
+// pgxPGVectorMigrationWriter 是一个使用 pgx 驱动的真实 pgvector 迁移目标端写入器。
 type pgxPGVectorMigrationWriter struct {
 	connectionURL string
 	db            pgvectorMigrationDB
@@ -200,6 +235,9 @@ func newPGXPGVectorMigrationWriterWithDB(db pgvectorMigrationDB) *pgxPGVectorMig
 	return &pgxPGVectorMigrationWriter{db: db}
 }
 
+// WritePGVectorMigrationRecords performs an upsert of the normalized records into the target pgvector table.
+//
+// WritePGVectorMigrationRecords 将规范化的记录以 upsert（插入或更新）语义写入目标 pgvector 表中。
 func (w *pgxPGVectorMigrationWriter) WritePGVectorMigrationRecords(ctx context.Context, table, idColumn, vectorColumn string, records []VectorMigrationRecord) error {
 	db, err := w.database(ctx)
 	if err != nil {

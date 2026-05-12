@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -105,10 +106,10 @@ func TestRunMigrateAndVerifyWithInjectedSteps(t *testing.T) {
 	if result.Migration.RecordsRead != 100 || result.Migration.RecordsWritten != 100 {
 		t.Fatalf("unexpected migration result: %+v", result.Migration)
 	}
-	if result.SourceFingerprintPath != "/tmp/vdb-guardian-run/mv-smoke-source-fingerprint.json" {
+	if result.SourceFingerprintPath != filepath.Join("/tmp/vdb-guardian-run", "mv-smoke-source-fingerprint.json") {
 		t.Fatalf("unexpected source fingerprint path: %s", result.SourceFingerprintPath)
 	}
-	if result.TargetFingerprintPath != "/tmp/vdb-guardian-run/mv-smoke-target-fingerprint.json" {
+	if result.TargetFingerprintPath != filepath.Join("/tmp/vdb-guardian-run", "mv-smoke-target-fingerprint.json") {
 		t.Fatalf("unexpected target fingerprint path: %s", result.TargetFingerprintPath)
 	}
 	if result.Verification.Output.ConsistencyScore != 1.0 {

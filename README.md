@@ -83,9 +83,14 @@ Read `CLAUDE.md` before development. The project requires:
 ## Local commands
 
 ```bash
-make fmt
-make lint
-make test
+make fmt          # gofmt + ruff format (writes changes)
+make fmt-check    # gofmt -l + ruff format --check (CI-equivalent, no writes)
+make lint         # go vet + ruff check + golangci-lint
+make test         # go test + pytest
+make coverage     # go test -race -coverprofile + pytest --cov
+make tidy         # go mod tidy + go mod verify
+make pre-commit   # run all pre-commit hooks across the repo
+make ci           # fmt-check + lint + test + coverage (mirrors PR-blocking CI)
 make migration-stack-config
 ```
 
@@ -94,6 +99,8 @@ Go only:
 ```bash
 make test-go
 make lint-go
+make lint-golangci   # requires golangci-lint installed locally
+make coverage-go
 ```
 
 Python only:
@@ -105,6 +112,12 @@ uv run pytest
 uv run ruff format .
 uv run ruff check .
 ```
+
+`make lint-golangci` requires `golangci-lint` ([install guide](https://golangci-lint.run/welcome/install/)).
+`make pre-commit` requires `pre-commit` (`pip install pre-commit && pre-commit install`).
+On Windows with `core.autocrlf=true`, `make fmt-check-go` may report files as unformatted
+because of CRLF line endings. Run `git config core.autocrlf input` to align local checks
+with CI behavior.
 
 ## CLI smoke check
 

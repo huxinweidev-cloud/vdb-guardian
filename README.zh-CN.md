@@ -531,9 +531,14 @@ CLAUDE.md
 仓库根目录：
 
 ```bash
-make fmt       # 格式化 Go 和 Python 代码
-make lint      # 运行 go vet 和 ruff check
-make test      # 运行 Go 和 Python 单元测试
+make fmt          # gofmt + ruff format（直接写回文件）
+make fmt-check    # gofmt -l + ruff format --check（仅检查，等价 CI）
+make lint         # go vet + ruff check + golangci-lint
+make test         # 运行 Go 和 Python 单元测试
+make coverage     # 生成 Go 和 Python 覆盖率报告
+make tidy         # go mod tidy + go mod verify
+make pre-commit   # 运行所有 pre-commit hook
+make ci           # fmt-check + lint + test + coverage，本地完整复现 PR 必过的 CI 检查
 make migration-stack-config  # 校验本地 migration Docker Compose 配置，不启动容器
 ```
 
@@ -542,6 +547,8 @@ Go：
 ```bash
 make test-go
 make lint-go
+make lint-golangci   # 需本地已安装 golangci-lint
+make coverage-go
 go test ./...
 ```
 
@@ -554,6 +561,14 @@ uv run pytest
 uv run ruff format .
 uv run ruff check .
 ```
+
+注意：
+
+- `make lint-golangci` 需先安装 `golangci-lint`（[安装指引](https://golangci-lint.run/welcome/install/)）；
+- `make pre-commit` 需先安装 `pre-commit`（`pip install pre-commit && pre-commit install`）；
+- Windows 在 `core.autocrlf=true` 下，`make fmt-check-go` 可能因 CRLF 行尾差异
+  误报文件未格式化。建议执行 `git config core.autocrlf input` 让本地检查行为
+  与 CI 一致。
 
 ## Python 依赖管理
 
