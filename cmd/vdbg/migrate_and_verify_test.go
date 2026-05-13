@@ -59,6 +59,23 @@ func TestParseMigrateAndVerifyOptions(t *testing.T) {
 	}
 }
 
+func TestParseMigrateAndVerifyOptionsParsesResetTarget(t *testing.T) {
+	options, err := parseMigrateAndVerifyOptions([]string{
+		"--fixture", "fixture.json",
+		"--milvus-address", "localhost:19530",
+		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--artifact-dir", "/tmp/vdb-guardian-run",
+		"--dimension", "8",
+		"--reset-target",
+	})
+	if err != nil {
+		t.Fatalf("parseMigrateAndVerifyOptions returned error: %v", err)
+	}
+	if !options.ResetTarget {
+		t.Fatal("expected reset-target flag to enable target reset")
+	}
+}
+
 func TestParseMigrateAndVerifyOptionsRejectsMissingRequiredFlags(t *testing.T) {
 	tests := []struct {
 		name string
@@ -117,6 +134,60 @@ func TestRunMigrateAndVerifyWithInjectedSteps(t *testing.T) {
 	}
 }
 
+func TestRunMigrateAndVerifyResetsTargetBeforeMigration(t *testing.T) {
+	fake := &fakeMigrateAndVerifySteps{}
+	_, err := runMigrateAndVerifyWithSteps(context.Background(), []string{
+		"--fixture", "fixture.json",
+		"--milvus-address", "localhost:19530",
+		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--artifact-dir", "/tmp/vdb-guardian-run",
+		"--dimension", "8",
+		"--reset-target",
+	}, fake)
+	if err != nil {
+		t.Fatalf("runMigrateAndVerifyWithSteps returned error: %v", err)
+	}
+	want := []string{"reset-target", "migrate", "build-source", "build-target", "compare"}
+	if strings.Join(fake.calls, ",") != strings.Join(want, ",") {
+		t.Fatalf("unexpected call order: got %v want %v", fake.calls, want)
+	}
+}
+
+func TestRunMigrateAndVerifyDoesNotResetTargetByDefault(t *testing.T) {
+	fake := &fakeMigrateAndVerifySteps{}
+	_, err := runMigrateAndVerifyWithSteps(context.Background(), []string{
+		"--fixture", "fixture.json",
+		"--milvus-address", "localhost:19530",
+		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--artifact-dir", "/tmp/vdb-guardian-run",
+		"--dimension", "8",
+	}, fake)
+	if err != nil {
+		t.Fatalf("runMigrateAndVerifyWithSteps returned error: %v", err)
+	}
+	if fake.resetTarget {
+		t.Fatal("expected reset-target step to be skipped by default")
+	}
+}
+
+func TestRunMigrateAndVerifyStopsWhenResetTargetFails(t *testing.T) {
+	fake := &fakeMigrateAndVerifySteps{resetErr: errors.New("reset failed")}
+	_, err := runMigrateAndVerifyWithSteps(context.Background(), []string{
+		"--fixture", "fixture.json",
+		"--milvus-address", "localhost:19530",
+		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--artifact-dir", "/tmp/vdb-guardian-run",
+		"--dimension", "8",
+		"--reset-target",
+	}, fake)
+	if err == nil || !strings.Contains(err.Error(), "reset failed") {
+		t.Fatalf("expected reset error, got %v", err)
+	}
+	if fake.migrated || fake.sourceBuilt || fake.targetBuilt || fake.compared {
+		t.Fatalf("expected later steps to be skipped, got %+v", fake)
+	}
+}
+
 func TestRunMigrateAndVerifyStopsOnStepError(t *testing.T) {
 	fake := &fakeMigrateAndVerifySteps{migrateErr: errors.New("migrate failed")}
 	_, err := runMigrateAndVerifyWithSteps(context.Background(), []string{
@@ -135,11 +206,26 @@ func TestRunMigrateAndVerifyStopsOnStepError(t *testing.T) {
 }
 
 type fakeMigrateAndVerifySteps struct {
+	calls       []string
+	resetTarget bool
 	migrated    bool
 	sourceBuilt bool
 	targetBuilt bool
 	compared    bool
+	resetErr    error
 	migrateErr  error
+}
+
+func (f *fakeMigrateAndVerifySteps) ResetTarget(ctx context.Context, options migrateAndVerifyOptions) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if f.resetErr != nil {
+		return f.resetErr
+	}
+	f.calls = append(f.calls, "reset-target")
+	f.resetTarget = true
+	return nil
 }
 
 func (f *fakeMigrateAndVerifySteps) Migrate(ctx context.Context, options migrateOptions) (migration.VectorMigrationResult, error) {
@@ -149,6 +235,7 @@ func (f *fakeMigrateAndVerifySteps) Migrate(ctx context.Context, options migrate
 	if f.migrateErr != nil {
 		return migration.VectorMigrationResult{}, f.migrateErr
 	}
+	f.calls = append(f.calls, "migrate")
 	f.migrated = true
 	return migration.VectorMigrationResult{
 		SourceCollection: options.MigrationConfig.SourceCollection,
@@ -163,6 +250,7 @@ func (f *fakeMigrateAndVerifySteps) BuildSourceArtifact(ctx context.Context, opt
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	f.calls = append(f.calls, "build-source")
 	f.sourceBuilt = strings.HasSuffix(outputPath, "-source-fingerprint.json")
 	return nil
 }
@@ -171,6 +259,7 @@ func (f *fakeMigrateAndVerifySteps) BuildTargetArtifact(ctx context.Context, opt
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	f.calls = append(f.calls, "build-target")
 	f.targetBuilt = strings.HasSuffix(outputPath, "-target-fingerprint.json")
 	return nil
 }
@@ -179,6 +268,7 @@ func (f *fakeMigrateAndVerifySteps) Compare(ctx context.Context, options compare
 	if err := ctx.Err(); err != nil {
 		return jobs.VerificationResult{}, err
 	}
+	f.calls = append(f.calls, "compare")
 	f.compared = true
 	return jobs.VerificationResult{
 		JobID:      options.JobID,

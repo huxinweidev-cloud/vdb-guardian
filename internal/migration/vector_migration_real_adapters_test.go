@@ -152,6 +152,36 @@ func TestPGXPGVectorMigrationWriterValidatesVectorsAndWrapsExecError(t *testing.
 	}
 }
 
+func TestPGXPGVectorMigrationWriterResetsRecords(t *testing.T) {
+	ctx := context.Background()
+	db := &fakePGVectorMigrationDB{}
+	writer := newPGXPGVectorMigrationWriterWithDB(db)
+
+	if err := writer.ResetPGVectorMigrationRecords(ctx, "items"); err != nil {
+		t.Fatalf("ResetPGVectorMigrationRecords() error = %v", err)
+	}
+	if len(db.calls) != 1 {
+		t.Fatalf("expected 1 exec call, got %d", len(db.calls))
+	}
+	if db.calls[0].sql != `TRUNCATE TABLE "items"` {
+		t.Fatalf("unexpected SQL: %s", db.calls[0].sql)
+	}
+	if len(db.calls[0].args) != 0 {
+		t.Fatalf("expected no args, got %#v", db.calls[0].args)
+	}
+}
+
+func TestPGXPGVectorMigrationWriterWrapsResetError(t *testing.T) {
+	ctx := context.Background()
+	db := &fakePGVectorMigrationDB{err: errors.New("truncate failed")}
+	writer := newPGXPGVectorMigrationWriterWithDB(db)
+
+	err := writer.ResetPGVectorMigrationRecords(ctx, "items")
+	if err == nil || !strings.Contains(err.Error(), "truncate pgvector migration table") {
+		t.Fatalf("expected wrapped reset error, got %v", err)
+	}
+}
+
 type fakeMilvusMigrationSDKClient struct {
 	requests []milvusMigrationQueryRequest
 	batches  []milvusMigrationQueryBatch

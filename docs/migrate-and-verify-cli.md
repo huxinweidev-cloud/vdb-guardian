@@ -34,7 +34,8 @@ go run ./cmd/vdbg migrate-and-verify \
   --expand-k 5 \
   --stable-k 2 \
   --boundary-k 1 \
-  --metric cosine
+  --metric cosine \
+  --reset-target
 ```
 
 ## Output
@@ -79,6 +80,7 @@ result: /tmp/vdb-guardian-run/migrate-and-verify-smoke-result.json
 - `--stable-k`: `2`
 - `--boundary-k`: `1`
 - `--metric`: `cosine`
+- `--reset-target`: `false`. When enabled, the command truncates the pgvector target table before migration.
 
 ## Scope
 
@@ -89,6 +91,7 @@ Implemented:
 - Target fingerprint artifact generation from pgvector.
 - Artifact comparison through the Python engine.
 - Summary output with record counts and primary consistency metrics.
+- Optional `--reset-target` cleanup to truncate the pgvector target table before migration.
 - Injected-step unit tests for orchestration and failure short-circuiting.
 
 ## Verified local smoke
@@ -136,7 +139,9 @@ Not implemented yet:
 
 Run this first against the local migration stack or disposable test databases.
 
-The migration step uses pgvector upsert semantics and does not delete stale target records. For strict production equivalence, future increments should add explicit cleanup/checkpoint semantics and metadata/partition support.
+By default, the migration step uses pgvector upsert semantics and does not delete stale target records. Pass `--reset-target` for disposable smoke runs where the target table should be truncated before migration. Do not enable it against production tables unless destructive cleanup is explicitly intended.
+
+For strict production equivalence, future increments should add explicit checkpoint semantics and metadata/partition support.
 
 ## Test command
 

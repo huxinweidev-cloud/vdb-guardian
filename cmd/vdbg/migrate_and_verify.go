@@ -23,6 +23,7 @@ type migrateAndVerifyOptions struct {
 	StableK     int
 	BoundaryK   int
 	Metric      string
+	ResetTarget bool
 }
 
 type migrateAndVerifyResult struct {
@@ -33,6 +34,7 @@ type migrateAndVerifyResult struct {
 }
 
 type migrateAndVerifySteps interface {
+	ResetTarget(ctx context.Context, options migrateAndVerifyOptions) error
 	Migrate(ctx context.Context, options migrateOptions) (migration.VectorMigrationResult, error)
 	BuildSourceArtifact(ctx context.Context, options migrateAndVerifyOptions, outputPath string) error
 	BuildTargetArtifact(ctx context.Context, options migrateAndVerifyOptions, outputPath string) error
@@ -73,6 +75,12 @@ func runMigrateAndVerifyWithSteps(ctx context.Context, args []string, steps migr
 	options, err := parseMigrateAndVerifyOptions(args)
 	if err != nil {
 		return migrateAndVerifyResult{}, err
+	}
+	if options.ResetTarget {
+		err = steps.ResetTarget(ctx, options)
+		if err != nil {
+			return migrateAndVerifyResult{}, err
+		}
 	}
 	migrationResult, err := steps.Migrate(ctx, options.Migrate)
 	if err != nil {
@@ -127,6 +135,7 @@ func parseMigrateAndVerifyOptions(args []string) (migrateAndVerifyOptions, error
 	var stableK int
 	var boundaryK int
 	var metric string
+	var resetTarget bool
 	flagSet.StringVar(&fixturePath, "fixture", "", "path to a synthetic fixture JSON file containing verification queries")
 	flagSet.StringVar(&milvusAddress, "milvus-address", "", "Milvus gRPC address to read source records from")
 	flagSet.StringVar(&sourceCollection, "source-collection", "items", "Milvus source collection")
@@ -145,6 +154,7 @@ func parseMigrateAndVerifyOptions(args []string) (migrateAndVerifyOptions, error
 	flagSet.IntVar(&stableK, "stable-k", 2, "leading hit count for stable_neighbors")
 	flagSet.IntVar(&boundaryK, "boundary-k", 1, "rank-window width around the topK cutoff")
 	flagSet.StringVar(&metric, "metric", connectors.MilvusMetricCosine, "metric for both Milvus and pgvector artifact searches: cosine or l2")
+	flagSet.BoolVar(&resetTarget, "reset-target", false, "truncate the pgvector target table before migration to avoid stale-row verification")
 	if err := flagSet.Parse(args); err != nil {
 		return migrateAndVerifyOptions{}, err
 	}
@@ -180,7 +190,16 @@ func parseMigrateAndVerifyOptions(args []string) (migrateAndVerifyOptions, error
 		StableK:     stableK,
 		BoundaryK:   boundaryK,
 		Metric:      metric,
+		ResetTarget: resetTarget,
 	}, nil
+}
+
+func (realMigrateAndVerifySteps) ResetTarget(ctx context.Context, options migrateAndVerifyOptions) error {
+	target, err := migration.NewPGVectorMigrationTarget(options.Migrate.PGVectorConfig, nil)
+	if err != nil {
+		return err
+	}
+	return target.ResetRecords(ctx, options.Migrate.MigrationConfig.TargetTable)
 }
 
 func (realMigrateAndVerifySteps) Migrate(ctx context.Context, options migrateOptions) (migration.VectorMigrationResult, error) {

@@ -34,7 +34,8 @@ go run ./cmd/vdbg migrate-and-verify \
   --expand-k 5 \
   --stable-k 2 \
   --boundary-k 1 \
-  --metric cosine
+  --metric cosine \
+  --reset-target
 ```
 
 ## 输出示例
@@ -79,6 +80,7 @@ result: /tmp/vdb-guardian-run/migrate-and-verify-smoke-result.json
 - `--stable-k`: `2`
 - `--boundary-k`: `1`
 - `--metric`: `cosine`
+- `--reset-target`: `false`。启用后会在迁移前清空 pgvector 目标表。
 
 ## 支持范围 (Scope)
 
@@ -89,6 +91,7 @@ result: /tmp/vdb-guardian-run/migrate-and-verify-smoke-result.json
 - 自动生成目标端 (pgvector) 指纹产物。
 - 通过 Python 引擎自动比对产物。
 - 包含数据量与主要一致性指标的汇总输出。
+- 可选 `--reset-target` 清理能力：迁移前清空 pgvector 目标表。
 - 为整体编排和失败短路（异常阻断）逻辑编写的注入式步骤单元测试。
 
 ## 本地冒烟验证示例
@@ -136,7 +139,9 @@ missing_target_queries: 0
 
 请优先在本地迁移环境栈或临时测试数据库上运行此命令。
 
-迁移步骤使用了 pgvector 的 upsert 语义，且**不会删除**目标端陈旧的无效记录。为了达成严苛的生产环境数据一致性，未来的迭代将引入显式的数据清理/检查点语义，并加入对元数据/分区的全面支持。
+默认情况下，迁移步骤使用 pgvector 的 upsert 语义，且**不会删除**目标端陈旧的无效记录。对于一次性本地冒烟或临时测试库，可以传入 `--reset-target`，让命令在迁移前清空目标表。除非明确需要破坏性清理，否则不要在生产表上启用该选项。
+
+为了达成严苛的生产环境数据一致性，未来的迭代将引入显式的检查点语义，并加入对元数据/分区的全面支持。
 
 ## 测试命令
 

@@ -124,6 +124,32 @@ func TestPGVectorMigrationTargetPropagatesAdapterErrors(t *testing.T) {
 	}
 }
 
+func TestPGVectorMigrationTargetResetRecordsUsesAdapter(t *testing.T) {
+	adapter := &fakePGVectorMigrationRecordWriter{}
+	target, err := NewPGVectorMigrationTarget(connectors.PGVectorConfig{ConnectionURL: "postgres://example", DefaultTable: "items", IDColumn: "id", VectorColumn: "embedding"}, adapter)
+	if err != nil {
+		t.Fatalf("NewPGVectorMigrationTarget returned error: %v", err)
+	}
+	if err := target.ResetRecords(context.Background(), "items"); err != nil {
+		t.Fatalf("ResetRecords returned error: %v", err)
+	}
+	if adapter.resetTable != "items" {
+		t.Fatalf("unexpected reset table: %q", adapter.resetTable)
+	}
+}
+
+func TestPGVectorMigrationTargetResetRecordsPropagatesAdapterErrors(t *testing.T) {
+	adapter := &fakePGVectorMigrationRecordWriter{resetErr: errors.New("boom")}
+	target, err := NewPGVectorMigrationTarget(connectors.PGVectorConfig{ConnectionURL: "postgres://example", DefaultTable: "items", IDColumn: "id", VectorColumn: "embedding"}, adapter)
+	if err != nil {
+		t.Fatalf("NewPGVectorMigrationTarget returned error: %v", err)
+	}
+	err = target.ResetRecords(context.Background(), "items")
+	if err == nil || !strings.Contains(err.Error(), "reset pgvector migration records") {
+		t.Fatalf("expected wrapped adapter error, got %v", err)
+	}
+}
+
 type fakeMilvusMigrationRecordReader struct {
 	collection  string
 	idField     string
@@ -144,10 +170,12 @@ func (f *fakeMilvusMigrationRecordReader) ReadMilvusMigrationRecords(ctx context
 
 type fakePGVectorMigrationRecordWriter struct {
 	table        string
+	resetTable   string
 	idColumn     string
 	vectorColumn string
 	writes       []VectorMigrationRecord
 	err          error
+	resetErr     error
 }
 
 func (f *fakePGVectorMigrationRecordWriter) WritePGVectorMigrationRecords(ctx context.Context, table, idColumn, vectorColumn string, records []VectorMigrationRecord) error {
@@ -158,5 +186,13 @@ func (f *fakePGVectorMigrationRecordWriter) WritePGVectorMigrationRecords(ctx co
 		return f.err
 	}
 	f.writes = copyVectorMigrationRecords(records)
+	return nil
+}
+
+func (f *fakePGVectorMigrationRecordWriter) ResetPGVectorMigrationRecords(ctx context.Context, table string) error {
+	if f.resetErr != nil {
+		return f.resetErr
+	}
+	f.resetTable = table
 	return nil
 }

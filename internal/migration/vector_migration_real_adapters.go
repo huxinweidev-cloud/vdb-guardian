@@ -256,6 +256,17 @@ func (w *pgxPGVectorMigrationWriter) WritePGVectorMigrationRecords(ctx context.C
 	return nil
 }
 
+func (w *pgxPGVectorMigrationWriter) ResetPGVectorMigrationRecords(ctx context.Context, table string) error {
+	db, err := w.database(ctx)
+	if err != nil {
+		return err
+	}
+	if err := db.Exec(ctx, pgvectorMigrationTruncateSQL(table)); err != nil {
+		return fmt.Errorf("truncate pgvector migration table %q: %w", table, err)
+	}
+	return nil
+}
+
 func (w *pgxPGVectorMigrationWriter) database(ctx context.Context) (pgvectorMigrationDB, error) {
 	if w.db != nil {
 		return w.db, nil
@@ -287,6 +298,10 @@ func pgvectorMigrationUpsertSQL(table, idColumn, vectorColumn string) string {
 		quotePGVectorSeedIdentifier(vectorColumn),
 		quotePGVectorSeedIdentifier(vectorColumn),
 	)
+}
+
+func pgvectorMigrationTruncateSQL(table string) string {
+	return fmt.Sprintf(`TRUNCATE TABLE %s`, quotePGVectorSeedIdentifier(table))
 }
 
 func formatPGVectorMigrationLiteral(vector []float64) (string, error) {

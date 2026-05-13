@@ -13,6 +13,7 @@ type milvusMigrationRecordReader interface {
 
 type pgvectorMigrationRecordWriter interface {
 	WritePGVectorMigrationRecords(ctx context.Context, table, idColumn, vectorColumn string, records []VectorMigrationRecord) error
+	ResetPGVectorMigrationRecords(ctx context.Context, table string) error
 }
 
 // MilvusVectorMigrationSource adapts a Milvus record reader to the generic vector migration source contract.
@@ -106,6 +107,23 @@ func (t PGVectorMigrationTarget) WriteRecords(ctx context.Context, table string,
 	}
 	if err := t.writer.WritePGVectorMigrationRecords(ctx, resolvedTable, t.config.IDColumn, t.config.VectorColumn, copyVectorMigrationRecords(records)); err != nil {
 		return fmt.Errorf("write pgvector migration records: %w", err)
+	}
+	return nil
+}
+
+// ResetRecords truncates the pgvector target table before a clean migration verification run.
+//
+// ResetRecords 在干净迁移验证运行前清空 pgvector 目标表。
+func (t PGVectorMigrationTarget) ResetRecords(ctx context.Context, table string) error {
+	resolvedTable := table
+	if resolvedTable == "" {
+		resolvedTable = t.config.DefaultTable
+	}
+	if err := validateMigrationAdapterIdentifier("target table", resolvedTable); err != nil {
+		return err
+	}
+	if err := t.writer.ResetPGVectorMigrationRecords(ctx, resolvedTable); err != nil {
+		return fmt.Errorf("reset pgvector migration records: %w", err)
 	}
 	return nil
 }
