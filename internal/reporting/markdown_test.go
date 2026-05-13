@@ -17,6 +17,7 @@ func TestRenderMigrateAndVerifyMarkdownIncludesSummaryMetricsAndArtifacts(t *tes
 		TargetFingerprintPath: "/tmp/run/mv-smoke-target-fingerprint.json",
 		ResultPath:            "/tmp/run/mv-smoke-result.json",
 		ResetTarget:           true,
+		StrictCount:           true,
 		Migration: migration.VectorMigrationResult{
 			SourceCollection: "items",
 			TargetTable:      "items",
@@ -50,6 +51,7 @@ func TestRenderMigrateAndVerifyMarkdownIncludesSummaryMetricsAndArtifacts(t *tes
 		"- Records read: `100`",
 		"- Records written: `100`",
 		"- Reset target: `yes`",
+		"- Strict count: `yes`",
 		"| Consistency score | 1.000000 |",
 		"| Fingerprint distance | 0.000000 |",
 		"| Stable neighbor distance | 0.100000 |",

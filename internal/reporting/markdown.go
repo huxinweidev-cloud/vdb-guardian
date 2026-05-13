@@ -33,6 +33,8 @@ type MigrateAndVerifyReport struct {
 	ResultPath string
 	// ResetTarget reports whether destructive target cleanup was enabled before migration.
 	ResetTarget bool
+	// StrictCount reports whether target row count validation was enabled after migration.
+	StrictCount bool
 }
 
 // RenderMigrateAndVerifyMarkdown renders a deterministic Markdown report for a
@@ -53,6 +55,10 @@ func RenderMigrateAndVerifyMarkdown(report MigrateAndVerifyReport) (string, erro
 	if report.ResetTarget {
 		resetTarget = "yes"
 	}
+	strictCount := "no"
+	if report.StrictCount {
+		strictCount = "yes"
+	}
 
 	var builder strings.Builder
 	builder.WriteString("# vdb-guardian migrate-and-verify report\n\n")
@@ -64,7 +70,8 @@ func RenderMigrateAndVerifyMarkdown(report MigrateAndVerifyReport) (string, erro
 	fmt.Fprintf(&builder, "- Dimension: `%d`\n", report.Migration.Dimension)
 	fmt.Fprintf(&builder, "- Records read: `%d`\n", report.Migration.RecordsRead)
 	fmt.Fprintf(&builder, "- Records written: `%d`\n", report.Migration.RecordsWritten)
-	fmt.Fprintf(&builder, "- Reset target: `%s`\n\n", resetTarget)
+	fmt.Fprintf(&builder, "- Reset target: `%s`\n", resetTarget)
+	fmt.Fprintf(&builder, "- Strict count: `%s`\n\n", strictCount)
 
 	builder.WriteString("## Metrics\n\n")
 	builder.WriteString("| Metric | Value |\n")

@@ -77,6 +77,23 @@ func TestParseMigrateAndVerifyOptionsParsesResetTarget(t *testing.T) {
 	}
 }
 
+func TestParseMigrateAndVerifyOptionsParsesStrictCount(t *testing.T) {
+	options, err := parseMigrateAndVerifyOptions([]string{
+		"--fixture", "fixture.json",
+		"--milvus-address", "localhost:19530",
+		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--artifact-dir", "/tmp/vdb-guardian-run",
+		"--dimension", "8",
+		"--strict-count",
+	})
+	if err != nil {
+		t.Fatalf("parseMigrateAndVerifyOptions returned error: %v", err)
+	}
+	if !options.StrictCount {
+		t.Fatal("expected strict-count flag to enable count validation")
+	}
+}
+
 func TestParseMigrateAndVerifyOptionsRejectsMissingRequiredFlags(t *testing.T) {
 	tests := []struct {
 		name string
@@ -182,6 +199,43 @@ func TestRunMigrateAndVerifyDoesNotResetTargetByDefault(t *testing.T) {
 	}
 }
 
+func TestRunMigrateAndVerifyValidatesTargetCountWhenStrictCountEnabled(t *testing.T) {
+	fake := &fakeMigrateAndVerifySteps{targetCount: 100}
+	_, err := runMigrateAndVerifyWithSteps(context.Background(), []string{
+		"--fixture", "fixture.json",
+		"--milvus-address", "localhost:19530",
+		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--artifact-dir", t.TempDir(),
+		"--dimension", "8",
+		"--strict-count",
+	}, fake)
+	if err != nil {
+		t.Fatalf("runMigrateAndVerifyWithSteps returned error: %v", err)
+	}
+	want := []string{"migrate", "count-target", "build-source", "build-target", "compare"}
+	if strings.Join(fake.calls, ",") != strings.Join(want, ",") {
+		t.Fatalf("unexpected call order: got %v want %v", fake.calls, want)
+	}
+}
+
+func TestRunMigrateAndVerifyFailsWhenStrictCountMismatches(t *testing.T) {
+	fake := &fakeMigrateAndVerifySteps{targetCount: 99}
+	_, err := runMigrateAndVerifyWithSteps(context.Background(), []string{
+		"--fixture", "fixture.json",
+		"--milvus-address", "localhost:19530",
+		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--artifact-dir", t.TempDir(),
+		"--dimension", "8",
+		"--strict-count",
+	}, fake)
+	if err == nil || !strings.Contains(err.Error(), "strict count") {
+		t.Fatalf("expected strict count mismatch error, got %v", err)
+	}
+	if fake.sourceBuilt || fake.targetBuilt || fake.compared {
+		t.Fatalf("expected artifact and compare steps to be skipped, got %+v", fake)
+	}
+}
+
 func TestRunMigrateAndVerifyStopsWhenResetTargetFails(t *testing.T) {
 	fake := &fakeMigrateAndVerifySteps{resetErr: errors.New("reset failed")}
 	_, err := runMigrateAndVerifyWithSteps(context.Background(), []string{
@@ -224,6 +278,7 @@ type fakeMigrateAndVerifySteps struct {
 	sourceBuilt bool
 	targetBuilt bool
 	compared    bool
+	targetCount int64
 	resetErr    error
 	migrateErr  error
 }
@@ -256,6 +311,14 @@ func (f *fakeMigrateAndVerifySteps) Migrate(ctx context.Context, options migrate
 		RecordsRead:      100,
 		RecordsWritten:   100,
 	}, nil
+}
+
+func (f *fakeMigrateAndVerifySteps) CountTarget(ctx context.Context, options migrateAndVerifyOptions) (int64, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	f.calls = append(f.calls, "count-target")
+	return f.targetCount, nil
 }
 
 func (f *fakeMigrateAndVerifySteps) BuildSourceArtifact(ctx context.Context, options migrateAndVerifyOptions, outputPath string) error {

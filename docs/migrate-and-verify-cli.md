@@ -36,7 +36,8 @@ go run ./cmd/vdbg migrate-and-verify \
   --stable-k 2 \
   --boundary-k 1 \
   --metric cosine \
-  --reset-target
+  --reset-target \
+  --strict-count
 ```
 
 ## Output
@@ -83,6 +84,7 @@ report: /tmp/vdb-guardian-run/migrate-and-verify-smoke-report.md
 - `--boundary-k`: `1`
 - `--metric`: `cosine`
 - `--reset-target`: `false`. When enabled, the command truncates the pgvector target table before migration.
+- `--strict-count`: `false`. When enabled, the command fails if the pgvector target row count does not equal records written after migration.
 
 ## Scope
 
@@ -95,6 +97,7 @@ Implemented:
 - Markdown report rendering at `<artifact-dir>/<job-id>-report.md`.
 - Summary output with record counts and primary consistency metrics.
 - Optional `--reset-target` cleanup to truncate the pgvector target table before migration.
+- Optional `--strict-count` validation to fail on target row count mismatches after migration.
 - Injected-step unit tests for orchestration and failure short-circuiting.
 
 ## Verified local smoke
@@ -143,6 +146,8 @@ Not implemented yet:
 Run this first against the local migration stack or disposable test databases.
 
 By default, the migration step uses pgvector upsert semantics and does not delete stale target records. Pass `--reset-target` for disposable smoke runs where the target table should be truncated before migration. Do not enable it against production tables unless destructive cleanup is explicitly intended.
+
+Pass `--strict-count` when the run should fail unless the post-migration pgvector target row count exactly matches `records_written`. This is most useful together with `--reset-target` for clean smoke checks; without cleanup, stale target rows can intentionally make the strict count fail.
 
 For strict production equivalence, future increments should add explicit checkpoint semantics and metadata/partition support.
 

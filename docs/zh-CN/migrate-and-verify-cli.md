@@ -36,7 +36,8 @@ go run ./cmd/vdbg migrate-and-verify \
   --stable-k 2 \
   --boundary-k 1 \
   --metric cosine \
-  --reset-target
+  --reset-target \
+  --strict-count
 ```
 
 ## 输出示例
@@ -83,6 +84,7 @@ report: /tmp/vdb-guardian-run/migrate-and-verify-smoke-report.md
 - `--boundary-k`: `1`
 - `--metric`: `cosine`
 - `--reset-target`: `false`。启用后会在迁移前清空 pgvector 目标表。
+- `--strict-count`: `false`。启用后，如果迁移后的 pgvector 目标表行数不等于 `records_written`，命令会失败。
 
 ## 支持范围 (Scope)
 
@@ -95,6 +97,7 @@ report: /tmp/vdb-guardian-run/migrate-and-verify-smoke-report.md
 - 在 `<artifact-dir>/<job-id>-report.md` 生成 Markdown 报告。
 - 包含数据量与主要一致性指标的汇总输出。
 - 可选 `--reset-target` 清理能力：迁移前清空 pgvector 目标表。
+- 可选 `--strict-count` 校验能力：迁移后目标表行数不匹配时直接失败。
 - 为整体编排和失败短路（异常阻断）逻辑编写的注入式步骤单元测试。
 
 ## 本地冒烟验证示例
@@ -143,6 +146,8 @@ missing_target_queries: 0
 请优先在本地迁移环境栈或临时测试数据库上运行此命令。
 
 默认情况下，迁移步骤使用 pgvector 的 upsert 语义，且**不会删除**目标端陈旧的无效记录。对于一次性本地冒烟或临时测试库，可以传入 `--reset-target`，让命令在迁移前清空目标表。除非明确需要破坏性清理，否则不要在生产表上启用该选项。
+
+如果需要在迁移后强制校验 pgvector 目标表行数必须等于 `records_written`，可以传入 `--strict-count`。该选项最适合与 `--reset-target` 组合用于干净的冒烟验证；如果不清理目标端，陈旧行可能会按预期触发 strict count 失败。
 
 为了达成严苛的生产环境数据一致性，未来的迭代将引入显式的检查点语义，并加入对元数据/分区的全面支持。
 

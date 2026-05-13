@@ -26,6 +26,7 @@ type migrateAndVerifyOptions struct {
 	BoundaryK   int
 	Metric      string
 	ResetTarget bool
+	StrictCount bool
 }
 
 type migrateAndVerifyResult struct {
@@ -39,6 +40,7 @@ type migrateAndVerifyResult struct {
 type migrateAndVerifySteps interface {
 	ResetTarget(ctx context.Context, options migrateAndVerifyOptions) error
 	Migrate(ctx context.Context, options migrateOptions) (migration.VectorMigrationResult, error)
+	CountTarget(ctx context.Context, options migrateAndVerifyOptions) (int64, error)
 	BuildSourceArtifact(ctx context.Context, options migrateAndVerifyOptions, outputPath string) error
 	BuildTargetArtifact(ctx context.Context, options migrateAndVerifyOptions, outputPath string) error
 	Compare(ctx context.Context, options compareArtifactsOptions, compareEngine engine.Engine) (jobs.VerificationResult, error)
@@ -90,6 +92,16 @@ func runMigrateAndVerifyWithSteps(ctx context.Context, args []string, steps migr
 	if err != nil {
 		return migrateAndVerifyResult{}, err
 	}
+	if options.StrictCount {
+		var targetCount int64
+		targetCount, err = steps.CountTarget(ctx, options)
+		if err != nil {
+			return migrateAndVerifyResult{}, err
+		}
+		if targetCount != int64(migrationResult.RecordsWritten) {
+			return migrateAndVerifyResult{}, fmt.Errorf("strict count mismatch: records_written=%d target_count=%d", migrationResult.RecordsWritten, targetCount)
+		}
+	}
 	sourcePath := filepath.Join(options.ArtifactDir, options.JobID+"-source-fingerprint.json")
 	targetPath := filepath.Join(options.ArtifactDir, options.JobID+"-target-fingerprint.json")
 	err = steps.BuildSourceArtifact(ctx, options, sourcePath)
@@ -119,6 +131,7 @@ func runMigrateAndVerifyWithSteps(ctx context.Context, args []string, steps migr
 		TargetFingerprintPath: targetPath,
 		ResultPath:            verification.ResultPath,
 		ResetTarget:           options.ResetTarget,
+		StrictCount:           options.StrictCount,
 	}); err != nil {
 		return migrateAndVerifyResult{}, err
 	}
@@ -168,6 +181,7 @@ func parseMigrateAndVerifyOptions(args []string) (migrateAndVerifyOptions, error
 	var boundaryK int
 	var metric string
 	var resetTarget bool
+	var strictCount bool
 	flagSet.StringVar(&fixturePath, "fixture", "", "path to a synthetic fixture JSON file containing verification queries")
 	flagSet.StringVar(&milvusAddress, "milvus-address", "", "Milvus gRPC address to read source records from")
 	flagSet.StringVar(&sourceCollection, "source-collection", "items", "Milvus source collection")
@@ -187,6 +201,7 @@ func parseMigrateAndVerifyOptions(args []string) (migrateAndVerifyOptions, error
 	flagSet.IntVar(&boundaryK, "boundary-k", 1, "rank-window width around the topK cutoff")
 	flagSet.StringVar(&metric, "metric", connectors.MilvusMetricCosine, "metric for both Milvus and pgvector artifact searches: cosine or l2")
 	flagSet.BoolVar(&resetTarget, "reset-target", false, "truncate the pgvector target table before migration to avoid stale-row verification")
+	flagSet.BoolVar(&strictCount, "strict-count", false, "fail when pgvector target row count does not equal records written after migration")
 	if err := flagSet.Parse(args); err != nil {
 		return migrateAndVerifyOptions{}, err
 	}
@@ -223,6 +238,7 @@ func parseMigrateAndVerifyOptions(args []string) (migrateAndVerifyOptions, error
 		BoundaryK:   boundaryK,
 		Metric:      metric,
 		ResetTarget: resetTarget,
+		StrictCount: strictCount,
 	}, nil
 }
 
@@ -240,6 +256,15 @@ func (realMigrateAndVerifySteps) Migrate(ctx context.Context, options migrateOpt
 		return migration.VectorMigrationResult{}, err
 	}
 	return runner.Migrate(ctx)
+}
+
+func (realMigrateAndVerifySteps) CountTarget(ctx context.Context, options migrateAndVerifyOptions) (int64, error) {
+	connector, err := connectors.NewPGVectorConnector(options.Migrate.PGVectorConfig, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer connector.Close()
+	return connector.Count(ctx, options.Migrate.MigrationConfig.TargetTable)
 }
 
 func (realMigrateAndVerifySteps) BuildSourceArtifact(ctx context.Context, options migrateAndVerifyOptions, outputPath string) error {
