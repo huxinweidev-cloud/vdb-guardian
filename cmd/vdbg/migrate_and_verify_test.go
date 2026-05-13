@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -103,6 +104,7 @@ func TestParseMigrateAndVerifyOptionsRejectsMissingRequiredFlags(t *testing.T) {
 }
 
 func TestRunMigrateAndVerifyWithInjectedSteps(t *testing.T) {
+	artifactDir := t.TempDir()
 	fake := &fakeMigrateAndVerifySteps{}
 	result, err := runMigrateAndVerifyWithSteps(context.Background(), []string{
 		"--fixture", "fixture.json",
@@ -110,7 +112,7 @@ func TestRunMigrateAndVerifyWithInjectedSteps(t *testing.T) {
 		"--source-collection", "items",
 		"--pgvector-connection-url", "postgres://[REDACTED]",
 		"--target-table", "items",
-		"--artifact-dir", "/tmp/vdb-guardian-run",
+		"--artifact-dir", artifactDir,
 		"--job-id", "mv-smoke",
 		"--dimension", "8",
 	}, fake)
@@ -123,11 +125,21 @@ func TestRunMigrateAndVerifyWithInjectedSteps(t *testing.T) {
 	if result.Migration.RecordsRead != 100 || result.Migration.RecordsWritten != 100 {
 		t.Fatalf("unexpected migration result: %+v", result.Migration)
 	}
-	if result.SourceFingerprintPath != filepath.Join("/tmp/vdb-guardian-run", "mv-smoke-source-fingerprint.json") {
+	if result.SourceFingerprintPath != filepath.Join(artifactDir, "mv-smoke-source-fingerprint.json") {
 		t.Fatalf("unexpected source fingerprint path: %s", result.SourceFingerprintPath)
 	}
-	if result.TargetFingerprintPath != filepath.Join("/tmp/vdb-guardian-run", "mv-smoke-target-fingerprint.json") {
+	if result.TargetFingerprintPath != filepath.Join(artifactDir, "mv-smoke-target-fingerprint.json") {
 		t.Fatalf("unexpected target fingerprint path: %s", result.TargetFingerprintPath)
+	}
+	if result.MarkdownReportPath != filepath.Join(artifactDir, "mv-smoke-report.md") {
+		t.Fatalf("unexpected markdown report path: %s", result.MarkdownReportPath)
+	}
+	reportData, err := os.ReadFile(result.MarkdownReportPath)
+	if err != nil {
+		t.Fatalf("expected markdown report to be written: %v", err)
+	}
+	if !strings.Contains(string(reportData), "# vdb-guardian migrate-and-verify report") {
+		t.Fatalf("unexpected markdown report contents:\n%s", string(reportData))
 	}
 	if result.Verification.Output.ConsistencyScore != 1.0 {
 		t.Fatalf("unexpected consistency score: %+v", result.Verification.Output)

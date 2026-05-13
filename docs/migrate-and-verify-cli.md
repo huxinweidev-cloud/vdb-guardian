@@ -9,6 +9,7 @@ migrate Milvus -> pgvector
 build Milvus source fingerprint artifact
 build pgvector target fingerprint artifact
 compare artifacts through the Python engine
+render a Markdown report
 ```
 
 The command assumes both databases are already running and reachable. It does not start Docker or provision services.
@@ -55,6 +56,7 @@ matched_queries: 10
 source_fingerprint: /tmp/vdb-guardian-run/migrate-and-verify-smoke-source-fingerprint.json
 target_fingerprint: /tmp/vdb-guardian-run/migrate-and-verify-smoke-target-fingerprint.json
 result: /tmp/vdb-guardian-run/migrate-and-verify-smoke-result.json
+report: /tmp/vdb-guardian-run/migrate-and-verify-smoke-report.md
 ```
 
 ## Required flags
@@ -90,6 +92,7 @@ Implemented:
 - Source fingerprint artifact generation from Milvus.
 - Target fingerprint artifact generation from pgvector.
 - Artifact comparison through the Python engine.
+- Markdown report rendering at `<artifact-dir>/<job-id>-report.md`.
 - Summary output with record counts and primary consistency metrics.
 - Optional `--reset-target` cleanup to truncate the pgvector target table before migration.
 - Injected-step unit tests for orchestration and failure short-circuiting.
@@ -133,7 +136,7 @@ Not implemented yet:
 - Metadata columns.
 - Milvus partitions.
 - Automatic source/target cleanup.
-- Rich Markdown/JSON report rendering beyond the existing result artifact.
+- Rich JSON diagnostic report rendering beyond the existing result artifact.
 
 ## Safety notes
 

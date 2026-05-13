@@ -9,6 +9,7 @@
 构建 Milvus 源端指纹产物
 构建 pgvector 目标端指纹产物
 通过 Python 引擎对产物进行验证比对
+生成 Markdown 报告
 ```
 
 该命令假设源和目标数据库均已在运行并可连通。它不会主动启动 Docker 或配置周边服务。
@@ -55,6 +56,7 @@ matched_queries: 10
 source_fingerprint: /tmp/vdb-guardian-run/migrate-and-verify-smoke-source-fingerprint.json
 target_fingerprint: /tmp/vdb-guardian-run/migrate-and-verify-smoke-target-fingerprint.json
 result: /tmp/vdb-guardian-run/migrate-and-verify-smoke-result.json
+report: /tmp/vdb-guardian-run/migrate-and-verify-smoke-report.md
 ```
 
 ## 必填标志 (Required flags)
@@ -90,6 +92,7 @@ result: /tmp/vdb-guardian-run/migrate-and-verify-smoke-result.json
 - 自动生成源端 (Milvus) 指纹产物。
 - 自动生成目标端 (pgvector) 指纹产物。
 - 通过 Python 引擎自动比对产物。
+- 在 `<artifact-dir>/<job-id>-report.md` 生成 Markdown 报告。
 - 包含数据量与主要一致性指标的汇总输出。
 - 可选 `--reset-target` 清理能力：迁移前清空 pgvector 目标表。
 - 为整体编排和失败短路（异常阻断）逻辑编写的注入式步骤单元测试。
@@ -133,7 +136,7 @@ missing_target_queries: 0
 - 元数据列映射。
 - Milvus 分区支持。
 - 自动清理源/目标端的无效数据。
-- 除了现有的结果产物之外，生成内容更为丰富的 Markdown/JSON 格式诊断报告。
+- 除了现有的结果产物之外，生成内容更为丰富的 JSON 格式诊断报告。
 
 ## 安全提示
 

@@ -5,12 +5,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/h3xwave/vdb-guardian/internal/connectors"
 	"github.com/h3xwave/vdb-guardian/internal/engine"
 	"github.com/h3xwave/vdb-guardian/internal/jobs"
 	"github.com/h3xwave/vdb-guardian/internal/migration"
+	"github.com/h3xwave/vdb-guardian/internal/reporting"
 )
 
 type migrateAndVerifyOptions struct {
@@ -31,6 +33,7 @@ type migrateAndVerifyResult struct {
 	SourceFingerprintPath string
 	TargetFingerprintPath string
 	Verification          jobs.VerificationResult
+	MarkdownReportPath    string
 }
 
 type migrateAndVerifySteps interface {
@@ -68,6 +71,7 @@ func runMigrateAndVerifyCommand(ctx context.Context, args []string) error {
 	fmt.Printf("source_fingerprint: %s\n", result.SourceFingerprintPath)
 	fmt.Printf("target_fingerprint: %s\n", result.TargetFingerprintPath)
 	fmt.Printf("result: %s\n", result.Verification.ResultPath)
+	fmt.Printf("report: %s\n", result.MarkdownReportPath)
 	return nil
 }
 
@@ -105,12 +109,40 @@ func runMigrateAndVerifyWithSteps(ctx context.Context, args []string, steps migr
 	if err != nil {
 		return migrateAndVerifyResult{}, err
 	}
+	reportPath := filepath.Join(options.ArtifactDir, options.JobID+"-report.md")
+	if err := writeMigrateAndVerifyMarkdownReport(reportPath, reporting.MigrateAndVerifyReport{
+		JobID:                 options.JobID,
+		State:                 verification.State,
+		Migration:             migrationResult,
+		Output:                verification.Output,
+		SourceFingerprintPath: sourcePath,
+		TargetFingerprintPath: targetPath,
+		ResultPath:            verification.ResultPath,
+		ResetTarget:           options.ResetTarget,
+	}); err != nil {
+		return migrateAndVerifyResult{}, err
+	}
 	return migrateAndVerifyResult{
 		Migration:             migrationResult,
 		SourceFingerprintPath: sourcePath,
 		TargetFingerprintPath: targetPath,
 		Verification:          verification,
+		MarkdownReportPath:    reportPath,
 	}, nil
+}
+
+func writeMigrateAndVerifyMarkdownReport(path string, report reporting.MigrateAndVerifyReport) error {
+	markdown, err := reporting.RenderMigrateAndVerifyMarkdown(report)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create migrate-and-verify report dir: %w", err)
+	}
+	if err := os.WriteFile(path, []byte(markdown), 0o600); err != nil {
+		return fmt.Errorf("write migrate-and-verify report %q: %w", path, err)
+	}
+	return nil
 }
 
 func parseMigrateAndVerifyOptions(args []string) (migrateAndVerifyOptions, error) {
