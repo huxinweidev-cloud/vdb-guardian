@@ -94,6 +94,24 @@ func TestParseMigrateAndVerifyOptionsParsesStrictCount(t *testing.T) {
 	}
 }
 
+func TestParseMigrateAndVerifyOptionsParsesThresholds(t *testing.T) {
+	options, err := parseMigrateAndVerifyOptions([]string{
+		"--fixture", "fixture.json",
+		"--milvus-address", "localhost:19530",
+		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--artifact-dir", "/tmp/vdb-guardian-run",
+		"--dimension", "8",
+		"--min-consistency-score", "0.999",
+		"--max-fingerprint-distance", "0.001",
+	})
+	if err != nil {
+		t.Fatalf("parseMigrateAndVerifyOptions returned error: %v", err)
+	}
+	if options.MinConsistencyScore != 0.999 || options.MaxFingerprintDistance != 0.001 {
+		t.Fatalf("unexpected thresholds: %+v", options)
+	}
+}
+
 func TestParseMigrateAndVerifyOptionsRejectsMissingRequiredFlags(t *testing.T) {
 	tests := []struct {
 		name string
@@ -115,6 +133,36 @@ func TestParseMigrateAndVerifyOptionsRejectsMissingRequiredFlags(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("expected %q error, got %v", tt.want, err)
+			}
+		})
+	}
+}
+
+func TestParseMigrateAndVerifyOptionsRejectsInvalidThresholds(t *testing.T) {
+	baseArgs := []string{
+		"--fixture", "fixture.json",
+		"--milvus-address", "localhost:19530",
+		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--artifact-dir", "/tmp/vdb-guardian-run",
+		"--dimension", "8",
+	}
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{
+			name: "min consistency below zero",
+			args: append(append([]string{}, baseArgs...), "--min-consistency-score", "-0.1"),
+		},
+		{
+			name: "max fingerprint distance above one",
+			args: append(append([]string{}, baseArgs...), "--max-fingerprint-distance", "1.1"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := parseMigrateAndVerifyOptions(tt.args); err == nil {
+				t.Fatal("expected invalid threshold to be rejected")
 			}
 		})
 	}
@@ -236,6 +284,40 @@ func TestRunMigrateAndVerifyFailsWhenStrictCountMismatches(t *testing.T) {
 	}
 }
 
+func TestRunMigrateAndVerifyFailsWhenConsistencyScoreBelowThreshold(t *testing.T) {
+	artifactDir := t.TempDir()
+	fake := &fakeMigrateAndVerifySteps{consistencyScore: 0.95}
+	_, err := runMigrateAndVerifyWithSteps(context.Background(), []string{
+		"--fixture", "fixture.json",
+		"--milvus-address", "localhost:19530",
+		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--artifact-dir", artifactDir,
+		"--dimension", "8",
+		"--min-consistency-score", "0.99",
+	}, fake)
+	if err == nil || !strings.Contains(err.Error(), "consistency score") {
+		t.Fatalf("expected consistency score threshold error, got %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(artifactDir, "migrate-and-verify-report.md")); statErr != nil {
+		t.Fatalf("expected report to be written before threshold failure: %v", statErr)
+	}
+}
+
+func TestRunMigrateAndVerifyFailsWhenFingerprintDistanceAboveThreshold(t *testing.T) {
+	fake := &fakeMigrateAndVerifySteps{consistencyScore: 1.0, fingerprintDistance: 0.02}
+	_, err := runMigrateAndVerifyWithSteps(context.Background(), []string{
+		"--fixture", "fixture.json",
+		"--milvus-address", "localhost:19530",
+		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--artifact-dir", t.TempDir(),
+		"--dimension", "8",
+		"--max-fingerprint-distance", "0.01",
+	}, fake)
+	if err == nil || !strings.Contains(err.Error(), "fingerprint distance") {
+		t.Fatalf("expected fingerprint distance threshold error, got %v", err)
+	}
+}
+
 func TestRunMigrateAndVerifyStopsWhenResetTargetFails(t *testing.T) {
 	fake := &fakeMigrateAndVerifySteps{resetErr: errors.New("reset failed")}
 	_, err := runMigrateAndVerifyWithSteps(context.Background(), []string{
@@ -272,15 +354,17 @@ func TestRunMigrateAndVerifyStopsOnStepError(t *testing.T) {
 }
 
 type fakeMigrateAndVerifySteps struct {
-	calls       []string
-	resetTarget bool
-	migrated    bool
-	sourceBuilt bool
-	targetBuilt bool
-	compared    bool
-	targetCount int64
-	resetErr    error
-	migrateErr  error
+	calls               []string
+	resetTarget         bool
+	migrated            bool
+	sourceBuilt         bool
+	targetBuilt         bool
+	compared            bool
+	targetCount         int64
+	resetErr            error
+	migrateErr          error
+	consistencyScore    float64
+	fingerprintDistance float64
 }
 
 func (f *fakeMigrateAndVerifySteps) ResetTarget(ctx context.Context, options migrateAndVerifyOptions) error {
@@ -345,13 +429,18 @@ func (f *fakeMigrateAndVerifySteps) Compare(ctx context.Context, options compare
 	}
 	f.calls = append(f.calls, "compare")
 	f.compared = true
+	consistencyScore := f.consistencyScore
+	if consistencyScore == 0 {
+		consistencyScore = 1.0
+	}
 	return jobs.VerificationResult{
 		JobID:      options.JobID,
+		State:      jobs.StateSucceeded,
 		ResultPath: options.ArtifactDir + "/" + options.JobID + "-result.json",
 		Output: engine.CompareOutput{
-			ConsistencyScore: 1.0,
+			ConsistencyScore: consistencyScore,
 			Metrics: engine.MetricSummary{
-				FingerprintDistance: 0.0,
+				FingerprintDistance: f.fingerprintDistance,
 				MatchedQueryCount:   10,
 			},
 		},

@@ -16,17 +16,19 @@ import (
 )
 
 type migrateAndVerifyOptions struct {
-	FixturePath string
-	Migrate     migrateOptions
-	ArtifactDir string
-	JobID       string
-	TopK        int
-	ExpandK     int
-	StableK     int
-	BoundaryK   int
-	Metric      string
-	ResetTarget bool
-	StrictCount bool
+	FixturePath            string
+	Migrate                migrateOptions
+	ArtifactDir            string
+	JobID                  string
+	TopK                   int
+	ExpandK                int
+	StableK                int
+	BoundaryK              int
+	Metric                 string
+	ResetTarget            bool
+	StrictCount            bool
+	MinConsistencyScore    float64
+	MaxFingerprintDistance float64
 }
 
 type migrateAndVerifyResult struct {
@@ -135,6 +137,9 @@ func runMigrateAndVerifyWithSteps(ctx context.Context, args []string, steps migr
 	}); err != nil {
 		return migrateAndVerifyResult{}, err
 	}
+	if err := validateMigrateAndVerifyThresholds(options, verification, reportPath); err != nil {
+		return migrateAndVerifyResult{}, err
+	}
 	return migrateAndVerifyResult{
 		Migration:             migrationResult,
 		SourceFingerprintPath: sourcePath,
@@ -154,6 +159,16 @@ func writeMigrateAndVerifyMarkdownReport(path string, report reporting.MigrateAn
 	}
 	if err := os.WriteFile(path, []byte(markdown), 0o600); err != nil {
 		return fmt.Errorf("write migrate-and-verify report %q: %w", path, err)
+	}
+	return nil
+}
+
+func validateMigrateAndVerifyThresholds(options migrateAndVerifyOptions, verification jobs.VerificationResult, reportPath string) error {
+	if verification.Output.ConsistencyScore < options.MinConsistencyScore {
+		return fmt.Errorf("consistency score %.6f is below minimum %.6f; report: %s", verification.Output.ConsistencyScore, options.MinConsistencyScore, reportPath)
+	}
+	if verification.Output.Metrics.FingerprintDistance > options.MaxFingerprintDistance {
+		return fmt.Errorf("fingerprint distance %.6f is above maximum %.6f; report: %s", verification.Output.Metrics.FingerprintDistance, options.MaxFingerprintDistance, reportPath)
 	}
 	return nil
 }
@@ -182,6 +197,8 @@ func parseMigrateAndVerifyOptions(args []string) (migrateAndVerifyOptions, error
 	var metric string
 	var resetTarget bool
 	var strictCount bool
+	var minConsistencyScore float64
+	var maxFingerprintDistance float64
 	flagSet.StringVar(&fixturePath, "fixture", "", "path to a synthetic fixture JSON file containing verification queries")
 	flagSet.StringVar(&milvusAddress, "milvus-address", "", "Milvus gRPC address to read source records from")
 	flagSet.StringVar(&sourceCollection, "source-collection", "items", "Milvus source collection")
@@ -202,10 +219,15 @@ func parseMigrateAndVerifyOptions(args []string) (migrateAndVerifyOptions, error
 	flagSet.StringVar(&metric, "metric", connectors.MilvusMetricCosine, "metric for both Milvus and pgvector artifact searches: cosine or l2")
 	flagSet.BoolVar(&resetTarget, "reset-target", false, "truncate the pgvector target table before migration to avoid stale-row verification")
 	flagSet.BoolVar(&strictCount, "strict-count", false, "fail when pgvector target row count does not equal records written after migration")
+	flagSet.Float64Var(&minConsistencyScore, "min-consistency-score", 0, "fail when consistency_score is below this threshold")
+	flagSet.Float64Var(&maxFingerprintDistance, "max-fingerprint-distance", 1, "fail when fingerprint_distance is above this threshold")
 	if err := flagSet.Parse(args); err != nil {
 		return migrateAndVerifyOptions{}, err
 	}
 	if err := validateMigrateAndVerifyFields(fixturePath, milvusAddress, pgvectorConnectionURL, artifactDir, jobID, dimension, batchSize, topK, expandK, stableK, boundaryK, metric); err != nil {
+		return migrateAndVerifyOptions{}, err
+	}
+	if err := validateMigrateAndVerifyThresholdFields(minConsistencyScore, maxFingerprintDistance); err != nil {
 		return migrateAndVerifyOptions{}, err
 	}
 	return migrateAndVerifyOptions{
@@ -230,15 +252,17 @@ func parseMigrateAndVerifyOptions(args []string) (migrateAndVerifyOptions, error
 				BatchSize:        batchSize,
 			},
 		},
-		ArtifactDir: artifactDir,
-		JobID:       jobID,
-		TopK:        topK,
-		ExpandK:     expandK,
-		StableK:     stableK,
-		BoundaryK:   boundaryK,
-		Metric:      metric,
-		ResetTarget: resetTarget,
-		StrictCount: strictCount,
+		ArtifactDir:            artifactDir,
+		JobID:                  jobID,
+		TopK:                   topK,
+		ExpandK:                expandK,
+		StableK:                stableK,
+		BoundaryK:              boundaryK,
+		Metric:                 metric,
+		ResetTarget:            resetTarget,
+		StrictCount:            strictCount,
+		MinConsistencyScore:    minConsistencyScore,
+		MaxFingerprintDistance: maxFingerprintDistance,
 	}, nil
 }
 
@@ -306,6 +330,16 @@ func (realMigrateAndVerifySteps) Compare(ctx context.Context, options compareArt
 		compareEngine = engine.NewPythonRunner(pythonPath, pythonWorkDir)
 	}
 	return runCompareArtifacts(ctx, options, compareEngine)
+}
+
+func validateMigrateAndVerifyThresholdFields(minConsistencyScore, maxFingerprintDistance float64) error {
+	if minConsistencyScore < 0 || minConsistencyScore > 1 {
+		return errors.New("min-consistency-score must be between 0 and 1")
+	}
+	if maxFingerprintDistance < 0 || maxFingerprintDistance > 1 {
+		return errors.New("max-fingerprint-distance must be between 0 and 1")
+	}
+	return nil
 }
 
 func validateMigrateAndVerifyFields(fixturePath, milvusAddress, pgvectorConnectionURL, artifactDir, jobID string, dimension, batchSize, topK, expandK, stableK, boundaryK int, metric string) error {
