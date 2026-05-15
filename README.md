@@ -46,6 +46,7 @@ Implemented in this scaffold:
 - `vdbg compare-artifacts` real source/target fingerprint artifact comparison CLI.
 - `vdbg inspect-milvus` read-only Milvus metadata inspection and migration planning JSON CLI.
 - `vdbg plan-pgvector-schema` dry-run pgvector schema/DDL planning CLI.
+- `vdbg compare-schema-plans` read-only schema plan comparison gate before applying pgvector DDL.
 - Internal minimal Milvus-to-pgvector migration runner boundary.
 - Tested migration source/target adapter boundary for Milvus reads and pgvector writes.
 - Real Milvus SDK migration reader and pgx-backed pgvector migration writer.
@@ -133,7 +134,8 @@ go run ./cmd/vdbg search-milvus --fixture testdata/migration/synthetic-small.jso
 go run ./cmd/vdbg build-milvus-artifact --fixture testdata/migration/synthetic-small.json --address localhost:19530 --output /tmp/vdb-guardian-source-fingerprint.json --top-k 3 --expand-k 5 --stable-k 2 --boundary-k 1
 go run ./cmd/vdbg inspect-milvus --milvus-address localhost:19530 --collection items --output /tmp/vdb-guardian-milvus-plan.json
 go run ./cmd/vdbg plan-pgvector-schema --inspection-plan /tmp/vdb-guardian-milvus-plan.json --output /tmp/vdb-guardian-pgvector-schema-plan.json
-go run ./cmd/vdbg seed-pgvector --fixture testdata/migration/synthetic-small.json --connection-url '[REDACTED]'
+go run ./cmd/vdbg compare-schema-plans --inspection-plan /tmp/vdb-guardian-milvus-plan.json --schema-plan /tmp/vdb-guardian-pgvector-schema-plan.json --output /tmp/vdb-guardian-schema-compare-report.json
+go run ./cmd/vdbg seed-pgvector --fixture testdata/migration/synthetic-small.json --connection-url '[REDACTED]' --reset
 go run ./cmd/vdbg search-pgvector --fixture testdata/migration/synthetic-small.json --connection-url '[REDACTED]' --top-k 3 --expand-k 5
 go run ./cmd/vdbg build-pgvector-artifact --fixture testdata/migration/synthetic-small.json --connection-url '[REDACTED]' --output /tmp/vdb-guardian-target-fingerprint.json --top-k 3 --expand-k 5 --stable-k 2 --boundary-k 1
 go run ./cmd/vdbg compare-artifacts --source /tmp/vdb-guardian-source-fingerprint.json --target /tmp/vdb-guardian-target-fingerprint.json --artifact-dir /tmp/vdb-guardian-compare --job-id real-artifact-smoke
@@ -172,7 +174,7 @@ See `docs/inspect-milvus-cli.md` for command usage, JSON schema, type mapping, a
 
 `vdbg plan-pgvector-schema` reads a Milvus inspection plan and writes a dry-run pgvector schema plan with PostgreSQL-safe identifiers, `CREATE TABLE` previews, dynamic/partition metadata columns, and vector index DDL recommendations. It does not connect to PostgreSQL or execute SQL.
 
-See `docs/plan-pgvector-schema-cli.md` for command usage, JSON schema, DDL preview behavior, and safety notes.
+See `docs/plan-pgvector-schema-cli.md` for command usage, JSON schema, DDL preview behavior, and safety notes. See `docs/compare-schema-plans-cli.md` for the read-only comparison gate that validates inspection plans against generated schema plans before any DDL is applied.
 
 ## pgvector connector
 

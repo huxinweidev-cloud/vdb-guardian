@@ -98,6 +98,13 @@ func main() {
 		}
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "compare-schema-plans" {
+		if err := runCompareSchemaPlansCommand(os.Args[2:], os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "compare-schema-plans failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "migrate" {
 		if err := runMigrateCommand(context.Background(), os.Args[2:]); err != nil {
 			fmt.Fprintf(os.Stderr, "migrate failed: %v\n", err)

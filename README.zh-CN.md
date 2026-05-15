@@ -75,6 +75,7 @@ Python 检索行为指纹算法引擎
 - `vdbg compare-artifacts` 真实源/目标指纹 artifact 对比 CLI；
 - `vdbg inspect-milvus` 只读 Milvus 元数据检查与迁移规划 JSON CLI；
 - `vdbg plan-pgvector-schema` dry-run pgvector schema / DDL 规划 CLI；
+- `vdbg compare-schema-plans` 在 apply pgvector DDL 前执行只读 schema plan 对比门禁；
 - 最小化 Milvus→pgvector 迁移运行器边界；
 - 已测试的 Milvus 读 / pgvector 写迁移适配器边界；
 - 真实 Milvus SDK 迁移读取器与 pgx 驱动的 pgvector 迁移写入器；
@@ -237,7 +238,17 @@ docs/zh-CN/inspect-milvus-cli.md
 docs/zh-CN/plan-pgvector-schema-cli.md
 ```
 
-### 12. pgvector Connector
+### 12. schema plan comparison CLI
+
+`vdbg compare-schema-plans` 会在执行任何 pgvector DDL 前，对比 Milvus inspection plan 与 dry-run pgvector schema plan，检查 collection/table、field/column、primary key、vector dimension、dynamic field、partition metadata 以及 index recommendation 是否一致。它只读取本地 JSON 文件，不连接数据库。
+
+详细说明见：
+
+```text
+docs/zh-CN/compare-schema-plans-cli.md
+```
+
+### 13. pgvector Connector
 
 最小 pgvector connector 位于：
 

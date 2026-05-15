@@ -2,7 +2,7 @@
 
 `vdbg plan-pgvector-schema` 会读取 Milvus inspection plan，并输出 dry-run PostgreSQL/pgvector schema plan，其中包含确定性的 DDL 预览。
 
-这是面向更完整 Milvus→pgvector 迁移规划的第二阶段能力。该命令不会连接 PostgreSQL、不会执行 DDL、不会创建表、不会创建索引，也不会迁移记录。
+这是面向更完整 Milvus→pgvector 迁移规划的第二阶段能力。该命令不会连接 PostgreSQL、不会执行 DDL、不会创建表、不会创建索引，也不会迁移记录。下一步可使用 `vdbg compare-schema-plans` 在 apply DDL 之前验证生成的 schema plan 与 source inspection plan 是否一致。
 
 ## 命令
 
