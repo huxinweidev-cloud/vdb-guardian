@@ -9,6 +9,40 @@ import (
 	"testing"
 )
 
+func TestBuildVectorMigrationReport(t *testing.T) {
+	result := VectorMigrationResult{
+		SourceCollection: "items",
+		TargetTable:      "items",
+		Dimension:        8,
+		RecordsRead:      100,
+		RecordsWritten:   100,
+	}
+	report := BuildVectorMigrationReport(result, VectorMigrationReportOptions{
+		JobID:             "migration-smoke",
+		SchemaPreflight:   true,
+		SchemaComparePath: "/tmp/schema-compare.json",
+	})
+
+	if report.SchemaVersion != VectorMigrationReportVersion {
+		t.Fatalf("unexpected schema version: %s", report.SchemaVersion)
+	}
+	if report.Status != "completed" {
+		t.Fatalf("unexpected status: %s", report.Status)
+	}
+	if report.Source.Type != "milvus" || report.Source.Collection != "items" {
+		t.Fatalf("unexpected source: %+v", report.Source)
+	}
+	if report.Target.Type != "pgvector" || report.Target.Table != "items" {
+		t.Fatalf("unexpected target: %+v", report.Target)
+	}
+	if report.Summary.RecordsRead != 100 || report.Summary.RecordsWritten != 100 {
+		t.Fatalf("unexpected summary: %+v", report.Summary)
+	}
+	if !report.Preflight.SchemaMatchRequired || report.Preflight.SchemaCompareStatus != "pass" {
+		t.Fatalf("unexpected preflight: %+v", report.Preflight)
+	}
+}
+
 func TestVectorMigrationRunnerMigratesReadRecordsIntoWriter(t *testing.T) {
 	ctx := context.Background()
 	source := &fakeVectorMigrationSource{

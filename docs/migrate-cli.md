@@ -19,7 +19,12 @@ go run ./cmd/vdbg migrate \
   --pgvector-id-column id \
   --pgvector-vector-column embedding \
   --dimension 8 \
-  --batch-size 100
+  --batch-size 100 \
+  --require-schema-match \
+  --schema-plan /tmp/vdb-guardian-pgvector-schema-plan.json \
+  --live-schema /tmp/vdb-guardian-live-pgvector-schema.json \
+  --output /tmp/vdb-guardian-migration-report.json \
+  --job-id migration-smoke
 ```
 
 ## Output
@@ -35,11 +40,41 @@ records_read: 100
 records_written: 100
 ```
 
+When `--output` is provided, the command also writes a machine-readable JSON report with `0600` permissions. The report records the job id, source collection, target table, schema preflight status, dimension, records read, and records written. It never includes the PostgreSQL connection URL.
+
+## Optional schema preflight
+
+Use `--require-schema-match` to make standalone migration depend on the planned-vs-live schema drift gate:
+
+```bash
+go run ./cmd/vdbg migrate \
+  --milvus-address localhost:19530 \
+  --source-collection items \
+  --pgvector-connection-url '[REDACTED]' \
+  --target-table items \
+  --dimension 1536 \
+  --require-schema-match \
+  --schema-plan /tmp/vdb-guardian-pgvector-schema-plan.json \
+  --live-schema /tmp/vdb-guardian-live-pgvector-schema.json \
+  --output /tmp/vdb-guardian-migration-report.json \
+  --job-id migration-smoke
+```
+
+With `--require-schema-match`, both `--schema-plan` and `--live-schema` are required. The command reuses the same artifact-only comparison as `vdbg compare-applied-schema`; if blocking drift exists, migration does not start.
+
 ## Required flags
 
 - `--milvus-address`: Milvus gRPC endpoint, for example `localhost:19530`.
 - `--pgvector-connection-url`: PostgreSQL connection URL. Redact this in logs and docs.
 - `--dimension`: expected vector dimension. The runner validates every migrated vector against this value.
+
+## Optional flags
+
+- `--require-schema-match`: require planned-vs-live schema comparison to pass before migration starts.
+- `--schema-plan`: pgvector schema plan JSON path. Required when `--require-schema-match` is set.
+- `--live-schema`: live pgvector schema inspection JSON path. Required when `--require-schema-match` is set.
+- `--output`: optional migration result report JSON path. Written with `0600` permissions.
+- `--job-id`: optional identifier included in the migration result report.
 
 ## Defaults
 
@@ -61,6 +96,8 @@ Implemented:
 - Real pgx-backed pgvector target upsert.
 - Dimension validation.
 - CLI flag parsing and injected-runner unit tests.
+- Optional planned-vs-live schema preflight via `--require-schema-match`.
+- Optional machine-readable migration result JSON report via `--output`.
 - Summary output for records read and written.
 
 Not implemented yet:

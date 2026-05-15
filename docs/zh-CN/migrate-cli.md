@@ -19,7 +19,12 @@ go run ./cmd/vdbg migrate \
   --pgvector-id-column id \
   --pgvector-vector-column embedding \
   --dimension 8 \
-  --batch-size 100
+  --batch-size 100 \
+  --require-schema-match \
+  --schema-plan /tmp/vdb-guardian-pgvector-schema-plan.json \
+  --live-schema /tmp/vdb-guardian-live-pgvector-schema.json \
+  --output /tmp/vdb-guardian-migration-report.json \
+  --job-id migration-smoke
 ```
 
 ## 输出示例
@@ -35,11 +40,41 @@ records_read: 100
 records_written: 100
 ```
 
+当提供 `--output` 时，命令还会写出机器可读 JSON report，文件权限为 `0600`。该 report 会记录 job id、源集合、目标表、schema preflight 状态、向量维度、读取记录数和写入记录数，但不会包含 PostgreSQL 连接 URL。
+
+## 可选 schema preflight
+
+使用 `--require-schema-match` 可以让 standalone migration 依赖 planned-vs-live schema drift gate：
+
+```bash
+go run ./cmd/vdbg migrate \
+  --milvus-address localhost:19530 \
+  --source-collection items \
+  --pgvector-connection-url '[REDACTED]' \
+  --target-table items \
+  --dimension 1536 \
+  --require-schema-match \
+  --schema-plan /tmp/vdb-guardian-pgvector-schema-plan.json \
+  --live-schema /tmp/vdb-guardian-live-pgvector-schema.json \
+  --output /tmp/vdb-guardian-migration-report.json \
+  --job-id migration-smoke
+```
+
+启用 `--require-schema-match` 时，必须同时提供 `--schema-plan` 和 `--live-schema`。该命令复用 `vdbg compare-applied-schema` 的 artifact-only 对比逻辑；如果存在 blocking drift，迁移不会启动。
+
 ## 必填标志 (Required flags)
 
 - `--milvus-address`: Milvus gRPC 终端点，例如 `localhost:19530`。
 - `--pgvector-connection-url`: PostgreSQL 连接 URL。请在日志和文档中对该信息进行脱敏处理。
 - `--dimension`: 预期的向量维度。运行器会针对该值校验每一个迁移的向量。
+
+## 可选标志 (Optional flags)
+
+- `--require-schema-match`: 要求 planned-vs-live schema 对比通过后才启动迁移。
+- `--schema-plan`: pgvector schema plan JSON 路径。启用 `--require-schema-match` 时必填。
+- `--live-schema`: live pgvector schema inspection JSON 路径。启用 `--require-schema-match` 时必填。
+- `--output`: 可选的 migration result report JSON 输出路径，文件权限为 `0600`。
+- `--job-id`: 写入 migration result report 的可选任务标识。
 
 ## 默认值 (Defaults)
 
@@ -61,6 +96,8 @@ records_written: 100
 - 真实基于 pgx 的 pgvector 目标端 upsert（插入或更新）写入。
 - 向量维度校验。
 - CLI 标志解析与注入运行器的单元测试。
+- 通过 `--require-schema-match` 可选执行 planned-vs-live schema preflight。
+- 通过 `--output` 可选写出机器可读 migration result JSON report。
 - 包含已读取和已写入记录数的摘要输出。
 
 尚未实现：

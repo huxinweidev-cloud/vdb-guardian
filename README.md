@@ -50,7 +50,7 @@ Implemented in this scaffold:
 - `vdbg apply-pgvector-schema` dry-run-by-default pgvector schema DDL application CLI.
 - `vdbg inspect-pgvector-schema` read-only live PostgreSQL/pgvector schema inspection CLI.
 - `vdbg compare-applied-schema` read-only drift gate for planned vs live pgvector schema artifacts.
-- Internal minimal Milvus-to-pgvector migration runner boundary.
+- Internal minimal Milvus-to-pgvector migration runner boundary with optional schema preflight and JSON result report.
 - Tested migration source/target adapter boundary for Milvus reads and pgvector writes.
 - Real Milvus SDK migration reader and pgx-backed pgvector migration writer.
 - `vdbg migrate` real Milvus-to-pgvector migration CLI.

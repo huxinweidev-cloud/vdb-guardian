@@ -79,7 +79,7 @@ Python 检索行为指纹算法引擎
 - `vdbg apply-pgvector-schema` 默认 dry-run 的 pgvector schema DDL 应用 CLI；
 - `vdbg inspect-pgvector-schema` 只读 live PostgreSQL/pgvector schema inspection CLI；
 - `vdbg compare-applied-schema` 对 planned/live pgvector schema artifact 执行只读 drift gate；
-- 最小化 Milvus→pgvector 迁移运行器边界；
+- 最小化 Milvus→pgvector 迁移运行器边界，支持可选 schema preflight 和 JSON result report；
 - 已测试的 Milvus 读 / pgvector 写迁移适配器边界；
 - 真实 Milvus SDK 迁移读取器与 pgx 驱动的 pgvector 迁移写入器；
 - `vdbg migrate` 真实 Milvus→pgvector 迁移 CLI；

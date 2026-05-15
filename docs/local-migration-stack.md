@@ -249,10 +249,12 @@ go run ./cmd/vdbg migrate \
   --pgvector-id-column id \
   --pgvector-vector-column embedding \
   --dimension 8 \
-  --batch-size 100
+  --batch-size 100 \
+  --output /tmp/vdb-guardian-migration-report.json \
+  --job-id migration-smoke
 ```
 
-For the committed small fixture, the expected summary is `records_read: 100` and `records_written: 100`.
+For the committed small fixture, the expected summary is `records_read: 100` and `records_written: 100`. The optional `--output` artifact is written as a machine-readable migration result JSON report with `0600` permissions. When schema plan/live inspection artifacts are available, add `--require-schema-match --schema-plan ... --live-schema ...` to block migration on schema drift.
 
 ## One-shot migrate-and-verify check
 

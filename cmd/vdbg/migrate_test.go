@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -46,6 +49,112 @@ func TestParseMigrateOptions(t *testing.T) {
 	}
 	if options.MigrationConfig.Dimension != 8 || options.MigrationConfig.BatchSize != 25 {
 		t.Fatalf("unexpected migration config: %+v", options.MigrationConfig)
+	}
+}
+
+func TestParseMigrateOptionsWithSchemaPreflightAndOutput(t *testing.T) {
+	options, err := parseMigrateOptions([]string{
+		"--milvus-address", "localhost:19530",
+		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--dimension", "8",
+		"--require-schema-match",
+		"--schema-plan", "/tmp/schema-plan.json",
+		"--live-schema", "/tmp/live-schema.json",
+		"--output", "/tmp/migration-report.json",
+		"--job-id", "migration-smoke",
+	})
+	if err != nil {
+		t.Fatalf("parseMigrateOptions returned error: %v", err)
+	}
+	if !options.RequireSchemaMatch {
+		t.Fatal("expected schema match preflight to be required")
+	}
+	if options.SchemaPlanPath != "/tmp/schema-plan.json" || options.LiveSchemaPath != "/tmp/live-schema.json" {
+		t.Fatalf("unexpected schema paths: %+v", options)
+	}
+	if options.OutputPath != "/tmp/migration-report.json" || options.JobID != "migration-smoke" {
+		t.Fatalf("unexpected report options: %+v", options)
+	}
+}
+
+func TestParseMigrateOptionsRejectsIncompleteSchemaPreflight(t *testing.T) {
+	_, err := parseMigrateOptions([]string{
+		"--milvus-address", "localhost:19530",
+		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--dimension", "8",
+		"--require-schema-match",
+		"--schema-plan", "/tmp/schema-plan.json",
+	})
+	if err == nil || !strings.Contains(err.Error(), "live-schema") {
+		t.Fatalf("expected live-schema error, got %v", err)
+	}
+}
+
+func TestRunMigrateBlocksWhenSchemaPreflightFails(t *testing.T) {
+	dir := t.TempDir()
+	schemaPlanPath := filepath.Join(dir, "schema-plan.json")
+	liveSchemaPath := filepath.Join(dir, "live-schema.json")
+	writeJSONFixture(t, schemaPlanPath, appliedCompareCLISchemaPlanFixture())
+	live := appliedCompareCLILiveSchemaFixture()
+	live.Tables[0].Columns[1].VectorDimension = 4
+	live.Tables[0].Columns[1].FormattedType = "vector(4)"
+	writeJSONFixture(t, liveSchemaPath, live)
+
+	fake := &fakeMigrateRunner{}
+	err := runMigrateWithFactory(context.Background(), []string{
+		"--milvus-address", "localhost:19530",
+		"--source-collection", "items",
+		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--target-table", "items",
+		"--dimension", "8",
+		"--require-schema-match",
+		"--schema-plan", schemaPlanPath,
+		"--live-schema", liveSchemaPath,
+	}, fake.newRunner)
+	if err == nil || !strings.Contains(err.Error(), "schema preflight failed") {
+		t.Fatalf("expected schema preflight failure, got %v", err)
+	}
+	if fake.migrated {
+		t.Fatal("migration should not run when schema preflight fails")
+	}
+}
+
+func TestRunMigrateWritesReportOutputWith0600Permissions(t *testing.T) {
+	dir := t.TempDir()
+	outputPath := filepath.Join(dir, "migration-report.json")
+	fake := &fakeMigrateRunner{}
+	err := runMigrateWithFactory(context.Background(), []string{
+		"--milvus-address", "localhost:19530",
+		"--source-collection", "items",
+		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--target-table", "items",
+		"--dimension", "8",
+		"--output", outputPath,
+		"--job-id", "migration-smoke",
+	}, fake.newRunner)
+	if err != nil {
+		t.Fatalf("runMigrateWithFactory returned error: %v", err)
+	}
+	info, err := os.Stat(outputPath)
+	if err != nil {
+		t.Fatalf("stat output: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("expected 0600 permissions, got %o", got)
+	}
+	data, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("read output: %v", err)
+	}
+	var report migration.VectorMigrationReport
+	if err := json.Unmarshal(data, &report); err != nil {
+		t.Fatalf("unmarshal report: %v", err)
+	}
+	if report.JobID != "migration-smoke" || report.Summary.RecordsWritten != 100 {
+		t.Fatalf("unexpected report: %+v", report)
+	}
+	if strings.Contains(string(data), "postgres://") {
+		t.Fatalf("report leaked connection URL: %s", data)
 	}
 }
 

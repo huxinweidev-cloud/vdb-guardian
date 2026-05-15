@@ -251,10 +251,12 @@ go run ./cmd/vdbg migrate \
   --pgvector-id-column id \
   --pgvector-vector-column embedding \
   --dimension 8 \
-  --batch-size 100
+  --batch-size 100 \
+  --output /tmp/vdb-guardian-migration-report.json \
+  --job-id migration-smoke
 ```
 
-对于仓库内提交的小型测试固件，预期摘要为 `records_read: 100` 和 `records_written: 100`。
+对于仓库内提交的小型测试固件，预期摘要为 `records_read: 100` 和 `records_written: 100`。可选的 `--output` artifact 会以 `0600` 权限写出机器可读 migration result JSON report。当 schema plan / live inspection artifacts 已可用时，可额外加入 `--require-schema-match --schema-plan ... --live-schema ...`，用于在发现 schema drift 时阻止迁移启动。
 
 ## 一键迁移并验证校验 (One-shot migrate-and-verify check)
 
