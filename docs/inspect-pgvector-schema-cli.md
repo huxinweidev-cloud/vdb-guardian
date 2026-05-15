@@ -122,4 +122,4 @@ Example shape:
 - It does not check index operator classes beyond the raw `pg_get_indexdef` definition.
 - It does not validate lock settings, transaction policy, or table ownership.
 
-Use a future `compare-applied-schema` phase to compare this live inspection artifact against the planned pgvector schema artifact.
+Use `vdbg compare-applied-schema` next to compare this live inspection artifact against the planned pgvector schema artifact before record migration.

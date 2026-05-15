@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Read-only `vdbg compare-schema-plans` CLI for validating Milvus inspection plans against pgvector schema plans before applying DDL
 - Dry-run-by-default `vdbg apply-pgvector-schema` CLI for applying planned pgvector schema DDL with JSON reports
 - Read-only `vdbg inspect-pgvector-schema` CLI for inventorying live PostgreSQL/pgvector schema metadata
+- Read-only `vdbg compare-applied-schema` CLI for detecting planned-vs-live pgvector schema drift before record migration
 
 ### Changed
 

@@ -78,6 +78,7 @@ Python 检索行为指纹算法引擎
 - `vdbg compare-schema-plans` 在 apply pgvector DDL 前执行只读 schema plan 对比门禁；
 - `vdbg apply-pgvector-schema` 默认 dry-run 的 pgvector schema DDL 应用 CLI；
 - `vdbg inspect-pgvector-schema` 只读 live PostgreSQL/pgvector schema inspection CLI；
+- `vdbg compare-applied-schema` 对 planned/live pgvector schema artifact 执行只读 drift gate；
 - 最小化 Milvus→pgvector 迁移运行器边界；
 - 已测试的 Milvus 读 / pgvector 写迁移适配器边界；
 - 真实 Milvus SDK 迁移读取器与 pgx 驱动的 pgvector 迁移写入器；
@@ -270,7 +271,22 @@ docs/zh-CN/apply-pgvector-schema-cli.md
 docs/zh-CN/inspect-pgvector-schema-cli.md
 ```
 
-### 15. pgvector Connector
+### 15. applied pgvector schema comparison CLI
+
+`vdbg compare-applied-schema` 会读取 `plan-pgvector-schema` 生成的 schema plan 与 `inspect-pgvector-schema` 生成的 live schema inspection，并执行只读 drift gate。它不会连接 PostgreSQL，也不会执行 SQL；发现阻断 drift 时会先写出 JSON report，再返回非零。
+
+```bash
+go run ./cmd/vdbg compare-applied-schema \
+  --schema-plan /tmp/vdb-guardian-pgvector-schema-plan.json \
+  --live-schema /tmp/vdb-guardian-live-pgvector-schema.json \
+  --output /tmp/vdb-guardian-applied-schema-compare-report.json
+```
+
+它会检查 table、column、type、nullable、primary key、vector dimension、pgvector extension 以及 supported index name/method。额外 live table/column/index 会作为 warning 进入 report。
+
+详见 `docs/zh-CN/compare-applied-schema-cli.md`。
+
+### 16. pgvector Connector
 
 最小 pgvector connector 位于：
 

@@ -122,4 +122,4 @@ go run ./cmd/vdbg inspect-pgvector-schema \
 - 暂不解析 index operator class，仅保留 `pg_get_indexdef` 原始定义；
 - 不验证 lock setting、transaction policy 或 table ownership。
 
-后续可通过 `compare-applied-schema` 阶段对比 live inspection artifact 与 planned pgvector schema artifact。
+下一步可使用 `vdbg compare-applied-schema` 将此 live inspection artifact 与 planned pgvector schema artifact 对比，作为记录迁移前的 drift gate。

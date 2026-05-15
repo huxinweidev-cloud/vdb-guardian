@@ -105,6 +105,13 @@ func main() {
 		}
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "compare-applied-schema" {
+		if err := runCompareAppliedSchemaCommand(os.Args[2:], os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "compare-applied-schema failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "inspect-pgvector-schema" {
 		if err := runInspectPGVectorSchemaCommand(context.Background(), os.Args[2:]); err != nil {
 			fmt.Fprintf(os.Stderr, "inspect-pgvector-schema: %v\n", err)
