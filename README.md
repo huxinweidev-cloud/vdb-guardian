@@ -48,6 +48,7 @@ Implemented in this scaffold:
 - `vdbg plan-pgvector-schema` dry-run pgvector schema/DDL planning CLI.
 - `vdbg compare-schema-plans` read-only schema plan comparison gate before applying pgvector DDL.
 - `vdbg apply-pgvector-schema` dry-run-by-default pgvector schema DDL application CLI.
+- `vdbg inspect-pgvector-schema` read-only live PostgreSQL/pgvector schema inspection CLI.
 - Internal minimal Milvus-to-pgvector migration runner boundary.
 - Tested migration source/target adapter boundary for Milvus reads and pgvector writes.
 - Real Milvus SDK migration reader and pgx-backed pgvector migration writer.
@@ -137,6 +138,7 @@ go run ./cmd/vdbg inspect-milvus --milvus-address localhost:19530 --collection i
 go run ./cmd/vdbg plan-pgvector-schema --inspection-plan /tmp/vdb-guardian-milvus-plan.json --output /tmp/vdb-guardian-pgvector-schema-plan.json
 go run ./cmd/vdbg compare-schema-plans --inspection-plan /tmp/vdb-guardian-milvus-plan.json --schema-plan /tmp/vdb-guardian-pgvector-schema-plan.json --output /tmp/vdb-guardian-schema-compare-report.json
 go run ./cmd/vdbg apply-pgvector-schema --schema-plan /tmp/vdb-guardian-pgvector-schema-plan.json --artifact-dir /tmp/vdb-guardian-schema-apply --job-id schema-apply-smoke --dry-run
+go run ./cmd/vdbg inspect-pgvector-schema --pgvector-connection-url '[REDACTED]' --target-schema public --output /tmp/vdb-guardian-live-pgvector-schema.json
 go run ./cmd/vdbg seed-pgvector --fixture testdata/migration/synthetic-small.json --connection-url '[REDACTED]' --reset
 go run ./cmd/vdbg search-pgvector --fixture testdata/migration/synthetic-small.json --connection-url '[REDACTED]' --top-k 3 --expand-k 5
 go run ./cmd/vdbg build-pgvector-artifact --fixture testdata/migration/synthetic-small.json --connection-url '[REDACTED]' --output /tmp/vdb-guardian-target-fingerprint.json --top-k 3 --expand-k 5 --stable-k 2 --boundary-k 1

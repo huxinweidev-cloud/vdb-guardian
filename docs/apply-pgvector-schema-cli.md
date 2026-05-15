@@ -144,4 +144,4 @@ Statuses:
 - No data migration is performed.
 - No checkpoint/resume semantics are implemented for schema application.
 
-Use future `inspect-pgvector-schema` and `compare-applied-schema` phases to validate live PostgreSQL schema after execution.
+Use future `inspect-pgvector-schema` and `compare-applied-schema` phases to validate live PostgreSQL schema after execution. `inspect-pgvector-schema` is now available for read-only live schema inventory.

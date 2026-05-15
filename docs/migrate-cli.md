@@ -53,7 +53,7 @@ records_written: 100
 
 ## Scope
 
-`vdbg inspect-milvus` complements this command by generating a read-only migration planning JSON document from Milvus metadata before record transfer. `vdbg plan-pgvector-schema` can then turn that inspection plan into a dry-run pgvector schema/DDL plan, `vdbg compare-schema-plans` validates the two planning artifacts before any DDL apply step, and `vdbg apply-pgvector-schema` can dry-run or execute the validated pgvector schema DDL. See `docs/inspect-milvus-cli.md`, `docs/plan-pgvector-schema-cli.md`, `docs/compare-schema-plans-cli.md`, and `docs/apply-pgvector-schema-cli.md`.
+`vdbg inspect-milvus` complements this command by generating a read-only migration planning JSON document from Milvus metadata before record transfer. `vdbg plan-pgvector-schema` can then turn that inspection plan into a dry-run pgvector schema/DDL plan, `vdbg compare-schema-plans` validates the two planning artifacts before any DDL apply step, `vdbg apply-pgvector-schema` can dry-run or execute the validated pgvector schema DDL, and `vdbg inspect-pgvector-schema` inventories the live target schema after apply. See `docs/inspect-milvus-cli.md`, `docs/plan-pgvector-schema-cli.md`, `docs/compare-schema-plans-cli.md`, `docs/apply-pgvector-schema-cli.md`, and `docs/inspect-pgvector-schema-cli.md`.
 
 Implemented:
 
