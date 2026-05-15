@@ -1059,7 +1059,7 @@ func BenchmarkMilvusSearch(b *testing.B) {
     // Setup
     connector := setupMilvusConnector()
     query := generateTestQuery()
-    
+
     b.ResetTimer()
     for i := 0; i < b.N; i++ {
         _, err := connector.Search(context.Background(), query, 10)
@@ -1196,4 +1196,3 @@ trivy image vdb-guardian:test
 ### Fixed
 - Memory leak in Milvus connector
 ```
-
