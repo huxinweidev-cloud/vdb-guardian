@@ -53,7 +53,7 @@ records_written: 100
 
 ## 支持范围 (Scope)
 
-`vdbg inspect-milvus` 可在记录迁移前根据 Milvus 元数据生成只读迁移规划 JSON 文档。详见 `docs/zh-CN/inspect-milvus-cli.md`。
+`vdbg inspect-milvus` 可在记录迁移前根据 Milvus 元数据生成只读迁移规划 JSON 文档。`vdbg plan-pgvector-schema` 可进一步把 inspection plan 转换为 dry-run pgvector schema / DDL 规划。详见 `docs/zh-CN/inspect-milvus-cli.md` 和 `docs/zh-CN/plan-pgvector-schema-cli.md`。
 
 目前已实现：
 

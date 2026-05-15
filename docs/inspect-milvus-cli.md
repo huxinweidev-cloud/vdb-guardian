@@ -2,7 +2,7 @@
 
 `vdbg inspect-milvus` performs a read-only inspection of Milvus collection metadata and emits a machine-readable migration planning JSON document.
 
-It is the first phase toward broader Milvus-to-pgvector migration planning. The command does not migrate records, create PostgreSQL tables, create indexes, start Docker, or mutate Milvus.
+It is the first phase toward broader Milvus-to-pgvector migration planning. The command does not migrate records, create PostgreSQL tables, create indexes, start Docker, or mutate Milvus. Use `vdbg plan-pgvector-schema` next to convert the inspection JSON into a dry-run pgvector schema/DDL plan.
 
 ## Command
 

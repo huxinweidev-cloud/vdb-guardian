@@ -2,7 +2,7 @@
 
 `vdbg inspect-milvus` 会以只读方式检查 Milvus collection 元数据，并输出机器可读的迁移规划 JSON 文档。
 
-这是面向更完整 Milvus→pgvector 迁移规划的第一阶段能力。该命令不会迁移记录、不会创建 PostgreSQL 表、不会创建索引、不会启动 Docker，也不会修改 Milvus。
+这是面向更完整 Milvus→pgvector 迁移规划的第一阶段能力。该命令不会迁移记录、不会创建 PostgreSQL 表、不会创建索引、不会启动 Docker，也不会修改 Milvus。下一步可使用 `vdbg plan-pgvector-schema` 将 inspection JSON 转换为 dry-run pgvector schema / DDL 规划。
 
 ## 命令
 
