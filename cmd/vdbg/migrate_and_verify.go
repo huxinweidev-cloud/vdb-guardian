@@ -32,11 +32,12 @@ type migrateAndVerifyOptions struct {
 }
 
 type migrateAndVerifyResult struct {
-	Migration             migration.VectorMigrationResult
-	SourceFingerprintPath string
-	TargetFingerprintPath string
-	Verification          jobs.VerificationResult
-	MarkdownReportPath    string
+	Migration                migration.VectorMigrationResult
+	SourceFingerprintPath    string
+	TargetFingerprintPath    string
+	Verification             jobs.VerificationResult
+	MarkdownReportPath       string
+	DiagnosticJSONReportPath string
 }
 
 type migrateAndVerifySteps interface {
@@ -76,6 +77,7 @@ func runMigrateAndVerifyCommand(ctx context.Context, args []string) error {
 	fmt.Printf("target_fingerprint: %s\n", result.TargetFingerprintPath)
 	fmt.Printf("result: %s\n", result.Verification.ResultPath)
 	fmt.Printf("report: %s\n", result.MarkdownReportPath)
+	fmt.Printf("diagnostic_report: %s\n", result.DiagnosticJSONReportPath)
 	return nil
 }
 
@@ -137,15 +139,34 @@ func runMigrateAndVerifyWithSteps(ctx context.Context, args []string, steps migr
 	}); err != nil {
 		return migrateAndVerifyResult{}, err
 	}
+	diagnosticReportPath := filepath.Join(options.ArtifactDir, options.JobID+"-diagnostic-report.json")
+	if err := writeMigrateAndVerifyDiagnosticJSONReport(diagnosticReportPath, reporting.MigrateAndVerifyDiagnosticReport{
+		MigrateAndVerifyReport: reporting.MigrateAndVerifyReport{
+			JobID:                 options.JobID,
+			State:                 verification.State,
+			Migration:             migrationResult,
+			Output:                verification.Output,
+			SourceFingerprintPath: sourcePath,
+			TargetFingerprintPath: targetPath,
+			ResultPath:            verification.ResultPath,
+			ResetTarget:           options.ResetTarget,
+			StrictCount:           options.StrictCount,
+		},
+		MinConsistencyScore:    options.MinConsistencyScore,
+		MaxFingerprintDistance: options.MaxFingerprintDistance,
+	}); err != nil {
+		return migrateAndVerifyResult{}, err
+	}
 	if err := validateMigrateAndVerifyThresholds(options, verification, reportPath); err != nil {
 		return migrateAndVerifyResult{}, err
 	}
 	return migrateAndVerifyResult{
-		Migration:             migrationResult,
-		SourceFingerprintPath: sourcePath,
-		TargetFingerprintPath: targetPath,
-		Verification:          verification,
-		MarkdownReportPath:    reportPath,
+		Migration:                migrationResult,
+		SourceFingerprintPath:    sourcePath,
+		TargetFingerprintPath:    targetPath,
+		Verification:             verification,
+		MarkdownReportPath:       reportPath,
+		DiagnosticJSONReportPath: diagnosticReportPath,
 	}, nil
 }
 
@@ -159,6 +180,20 @@ func writeMigrateAndVerifyMarkdownReport(path string, report reporting.MigrateAn
 	}
 	if err := os.WriteFile(path, []byte(markdown), 0o600); err != nil {
 		return fmt.Errorf("write migrate-and-verify report %q: %w", path, err)
+	}
+	return nil
+}
+
+func writeMigrateAndVerifyDiagnosticJSONReport(path string, report reporting.MigrateAndVerifyDiagnosticReport) error {
+	data, err := reporting.RenderMigrateAndVerifyDiagnosticJSON(report)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create migrate-and-verify diagnostic report dir: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return fmt.Errorf("write migrate-and-verify diagnostic report %q: %w", path, err)
 	}
 	return nil
 }

@@ -10,6 +10,7 @@
 构建 pgvector 目标端指纹产物
 通过 Python 引擎对产物进行验证比对
 生成 Markdown 报告
+生成机器可读的诊断 JSON 报告
 ```
 
 该命令假设源和目标数据库均已在运行并可连通。它不会主动启动 Docker 或配置周边服务。
@@ -60,6 +61,7 @@ source_fingerprint: /tmp/vdb-guardian-run/migrate-and-verify-smoke-source-finger
 target_fingerprint: /tmp/vdb-guardian-run/migrate-and-verify-smoke-target-fingerprint.json
 result: /tmp/vdb-guardian-run/migrate-and-verify-smoke-result.json
 report: /tmp/vdb-guardian-run/migrate-and-verify-smoke-report.md
+diagnostic_report: /tmp/vdb-guardian-run/migrate-and-verify-smoke-diagnostic-report.json
 ```
 
 ## 必填标志 (Required flags)
@@ -99,6 +101,7 @@ report: /tmp/vdb-guardian-run/migrate-and-verify-smoke-report.md
 - 自动生成目标端 (pgvector) 指纹产物。
 - 通过 Python 引擎自动比对产物。
 - 在 `<artifact-dir>/<job-id>-report.md` 生成 Markdown 报告。
+- 在 `<artifact-dir>/<job-id>-diagnostic-report.json` 生成机器可读的诊断 JSON 报告。
 - 包含数据量与主要一致性指标的汇总输出。
 - 可选 `--reset-target` 清理能力：迁移前清空 pgvector 目标表。
 - 可选 `--strict-count` 校验能力：迁移后目标表行数不匹配时直接失败。
@@ -138,13 +141,52 @@ missing_target_queries: 0
 }
 ```
 
+生成的诊断 JSON 报告产物结构如下：
+
+```json
+{
+  "schema_version": "v1",
+  "job_id": "migrate-and-verify-smoke",
+  "state": "SUCCEEDED",
+  "migration": {
+    "source_collection": "items",
+    "target_table": "items",
+    "dimension": 8,
+    "records_read": 100,
+    "records_written": 100
+  },
+  "verification": {
+    "consistency_score": 1,
+    "metrics": {
+      "fingerprint_distance": 0,
+      "matched_query_count": 10,
+      "missing_source_query_count": 0,
+      "missing_target_query_count": 0
+    }
+  },
+  "artifacts": {
+    "source_fingerprint": "/tmp/vdb-guardian-run/migrate-and-verify-smoke-source-fingerprint.json",
+    "target_fingerprint": "/tmp/vdb-guardian-run/migrate-and-verify-smoke-target-fingerprint.json",
+    "result_json": "/tmp/vdb-guardian-run/migrate-and-verify-smoke-result.json"
+  },
+  "safety": {
+    "reset_target": true,
+    "strict_count": true
+  },
+  "quality_gates": {
+    "min_consistency_score": 0.999,
+    "max_fingerprint_distance": 0.001,
+    "passed": true
+  }
+}
+```
+
 尚未实现：
 
 - 生产环境级别的断点续传 (Checkpointing)。
 - 元数据列映射。
 - Milvus 分区支持。
 - 自动清理源/目标端的无效数据。
-- 除了现有的结果产物之外，生成内容更为丰富的 JSON 格式诊断报告。
 
 ## 安全提示
 

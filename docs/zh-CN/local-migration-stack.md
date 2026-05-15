@@ -236,6 +236,54 @@ python -m json.tool /tmp/vdb-guardian-source-fingerprint.json >/dev/null
 
 预期产物中将包含 `10` 个查询级指纹。
 
+## 真实 Milvus 到 pgvector 迁移校验 (Real Milvus-to-pgvector migration check)
+
+在 Milvus 源集合已完成灌入，且 PostgreSQL pgvector 服务健康后，可以执行真实迁移路径：
+
+```bash
+go run ./cmd/vdbg migrate \
+  --milvus-address localhost:19530 \
+  --source-collection items \
+  --milvus-id-field id \
+  --milvus-vector-field embedding \
+  --pgvector-connection-url '[REDACTED]' \
+  --target-table items \
+  --pgvector-id-column id \
+  --pgvector-vector-column embedding \
+  --dimension 8 \
+  --batch-size 100
+```
+
+对于仓库内提交的小型测试固件，预期摘要为 `records_read: 100` 和 `records_written: 100`。
+
+## 一键迁移并验证校验 (One-shot migrate-and-verify check)
+
+在 Milvus 源集合已完成灌入，且 PostgreSQL pgvector 服务健康后，可以执行完整的一键一致性闭环：
+
+```bash
+go run ./cmd/vdbg migrate-and-verify \
+  --fixture testdata/migration/synthetic-small.json \
+  --milvus-address localhost:19530 \
+  --source-collection items \
+  --milvus-id-field id \
+  --milvus-vector-field embedding \
+  --pgvector-connection-url '[REDACTED]' \
+  --target-table items \
+  --pgvector-id-column id \
+  --pgvector-vector-column embedding \
+  --artifact-dir /tmp/vdb-guardian-run \
+  --job-id migrate-and-verify-smoke \
+  --dimension 8 \
+  --batch-size 100 \
+  --top-k 3 \
+  --expand-k 5 \
+  --stable-k 2 \
+  --boundary-k 1 \
+  --metric cosine
+```
+
+对于仓库内提交的小型测试固件及兼容的源/目标检索行为，该命令应输出 `records_read: 100`、`records_written: 100` 和 `matched_queries: 10`。它还会写入 `<artifact-dir>/<job-id>-diagnostic-report.json`，其中包含机器可读的迁移计数、指纹指标、产物路径、安全标志和质量门禁状态。
+
 ## 源/目标产物比对校验 (Source/target artifact comparison check)
 
 当源端与目标端的产物文件均已就绪后，驱动 Python 引擎执行最终的比对：
@@ -266,4 +314,4 @@ scripts/check-migration-stack.sh milvus-port
 
 ## 当前局限性 (Current limitations)
 
-目前，该技术栈已经完整支持了 pgvector (目标端) 与 Milvus (源端) 的固件灌入、检索验证、产物构建，以及最终的双端产物比对流水线验证。然而，它**尚未**支持从 Milvus 向 pgvector 进行全量数据的自动迁移，也未能一键执行“迁移并验证”的完整串联工作流。这些高级能力将在后续的迁移 MVP 迭代中逐步落地。
+目前，该技术栈已经完整支持了 pgvector (目标端) 与 Milvus (源端) 的固件灌入、检索验证、产物构建、真实 Milvus 到 pgvector 数据迁移、一键 `migrate-and-verify` 编排，以及最终的双端产物比对流水线验证。生产环境级别的断点续传、元数据列映射、Milvus 分区支持和清理策略仍属于后续工作。

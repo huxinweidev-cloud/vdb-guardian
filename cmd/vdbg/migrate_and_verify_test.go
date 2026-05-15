@@ -199,12 +199,22 @@ func TestRunMigrateAndVerifyWithInjectedSteps(t *testing.T) {
 	if result.MarkdownReportPath != filepath.Join(artifactDir, "mv-smoke-report.md") {
 		t.Fatalf("unexpected markdown report path: %s", result.MarkdownReportPath)
 	}
+	if result.DiagnosticJSONReportPath != filepath.Join(artifactDir, "mv-smoke-diagnostic-report.json") {
+		t.Fatalf("unexpected diagnostic JSON report path: %s", result.DiagnosticJSONReportPath)
+	}
 	reportData, err := os.ReadFile(result.MarkdownReportPath)
 	if err != nil {
 		t.Fatalf("expected markdown report to be written: %v", err)
 	}
 	if !strings.Contains(string(reportData), "# vdb-guardian migrate-and-verify report") {
 		t.Fatalf("unexpected markdown report contents:\n%s", string(reportData))
+	}
+	diagnosticReportData, err := os.ReadFile(result.DiagnosticJSONReportPath)
+	if err != nil {
+		t.Fatalf("expected diagnostic JSON report to be written: %v", err)
+	}
+	if !strings.Contains(string(diagnosticReportData), "\"schema_version\": \"v1\"") || !strings.Contains(string(diagnosticReportData), "\"job_id\": \"mv-smoke\"") {
+		t.Fatalf("unexpected diagnostic JSON report contents:\n%s", string(diagnosticReportData))
 	}
 	if result.Verification.Output.ConsistencyScore != 1.0 {
 		t.Fatalf("unexpected consistency score: %+v", result.Verification.Output)

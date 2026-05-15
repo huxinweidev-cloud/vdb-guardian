@@ -280,7 +280,7 @@ go run ./cmd/vdbg migrate-and-verify \
   --metric cosine
 ```
 
-For the committed small fixture and compatible source/target search behavior, the command should print `records_read: 100`, `records_written: 100`, and `matched_queries: 10`.
+For the committed small fixture and compatible source/target search behavior, the command should print `records_read: 100`, `records_written: 100`, and `matched_queries: 10`. It also writes `<artifact-dir>/<job-id>-diagnostic-report.json` with machine-readable migration counts, fingerprint metrics, artifact paths, safety flags, and quality gate status.
 
 ## Source/target artifact comparison check
 

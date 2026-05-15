@@ -60,6 +60,7 @@ source_fingerprint: /tmp/vdb-guardian-run/migrate-and-verify-smoke-source-finger
 target_fingerprint: /tmp/vdb-guardian-run/migrate-and-verify-smoke-target-fingerprint.json
 result: /tmp/vdb-guardian-run/migrate-and-verify-smoke-result.json
 report: /tmp/vdb-guardian-run/migrate-and-verify-smoke-report.md
+diagnostic_report: /tmp/vdb-guardian-run/migrate-and-verify-smoke-diagnostic-report.json
 ```
 
 ## Required flags
@@ -99,6 +100,7 @@ Implemented:
 - Target fingerprint artifact generation from pgvector.
 - Artifact comparison through the Python engine.
 - Markdown report rendering at `<artifact-dir>/<job-id>-report.md`.
+- Machine-readable diagnostic JSON rendering at `<artifact-dir>/<job-id>-diagnostic-report.json`.
 - Summary output with record counts and primary consistency metrics.
 - Optional `--reset-target` cleanup to truncate the pgvector target table before migration.
 - Optional `--strict-count` validation to fail on target row count mismatches after migration.
@@ -138,13 +140,52 @@ The generated result artifact is shaped like:
 }
 ```
 
+The generated diagnostic report artifact is shaped like:
+
+```json
+{
+  "schema_version": "v1",
+  "job_id": "migrate-and-verify-smoke",
+  "state": "SUCCEEDED",
+  "migration": {
+    "source_collection": "items",
+    "target_table": "items",
+    "dimension": 8,
+    "records_read": 100,
+    "records_written": 100
+  },
+  "verification": {
+    "consistency_score": 1,
+    "metrics": {
+      "fingerprint_distance": 0,
+      "matched_query_count": 10,
+      "missing_source_query_count": 0,
+      "missing_target_query_count": 0
+    }
+  },
+  "artifacts": {
+    "source_fingerprint": "/tmp/vdb-guardian-run/migrate-and-verify-smoke-source-fingerprint.json",
+    "target_fingerprint": "/tmp/vdb-guardian-run/migrate-and-verify-smoke-target-fingerprint.json",
+    "result_json": "/tmp/vdb-guardian-run/migrate-and-verify-smoke-result.json"
+  },
+  "safety": {
+    "reset_target": true,
+    "strict_count": true
+  },
+  "quality_gates": {
+    "min_consistency_score": 0.999,
+    "max_fingerprint_distance": 0.001,
+    "passed": true
+  }
+}
+```
+
 Not implemented yet:
 
 - Production checkpointing.
 - Metadata columns.
 - Milvus partitions.
 - Automatic source/target cleanup.
-- Rich JSON diagnostic report rendering beyond the existing result artifact.
 
 ## Safety notes
 
