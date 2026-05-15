@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Community governance files (SECURITY.md, CONTRIBUTING.md, CODE_OF_CONDUCT.md)
 - Dependabot configuration for automated dependency updates
 - Machine-readable diagnostic JSON report for `migrate-and-verify` runs
+- Read-only `vdbg inspect-milvus` CLI for Milvus metadata inspection and migration planning JSON
 
 ### Changed
 

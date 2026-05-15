@@ -53,6 +53,8 @@ records_written: 100
 
 ## Scope
 
+`vdbg inspect-milvus` complements this command by generating a read-only migration planning JSON document from Milvus metadata before record transfer. See `docs/inspect-milvus-cli.md`.
+
 Implemented:
 
 - Real Milvus SDK-backed source read.

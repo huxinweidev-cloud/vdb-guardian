@@ -84,6 +84,13 @@ func main() {
 		}
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "inspect-milvus" {
+		if err := runInspectMilvusCommand(context.Background(), os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "inspect-milvus failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "migrate" {
 		if err := runMigrateCommand(context.Background(), os.Args[2:]); err != nil {
 			fmt.Fprintf(os.Stderr, "migrate failed: %v\n", err)

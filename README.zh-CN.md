@@ -73,6 +73,7 @@ Python 检索行为指纹算法引擎
 - `vdbg search-pgvector` 真实 pgvector 检索冒烟 CLI；
 - `vdbg build-pgvector-artifact` 真实 pgvector 指纹 artifact CLI；
 - `vdbg compare-artifacts` 真实源/目标指纹 artifact 对比 CLI；
+- `vdbg inspect-milvus` 只读 Milvus 元数据检查与迁移规划 JSON CLI；
 - 最小化 Milvus→pgvector 迁移运行器边界；
 - 已测试的 Milvus 读 / pgvector 写迁移适配器边界；
 - 真实 Milvus SDK 迁移读取器与 pgx 驱动的 pgvector 迁移写入器；
@@ -215,7 +216,17 @@ internal/connectors
 docs/milvus-connector.md
 ```
 
-### 10. pgvector Connector
+### 10. Milvus inspection CLI
+
+`vdbg inspect-milvus` 会以只读方式检查 Milvus 元数据，并写出迁移规划 JSON，其中包含 collection schema、字段类型建议、向量索引建议、分区元数据以及支持级别告警。它不会迁移记录，也不会写入 PostgreSQL。
+
+详细说明见：
+
+```text
+docs/zh-CN/inspect-milvus-cli.md
+```
+
+### 11. pgvector Connector
 
 最小 pgvector connector 位于：
 

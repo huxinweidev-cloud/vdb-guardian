@@ -53,6 +53,8 @@ records_written: 100
 
 ## 支持范围 (Scope)
 
+`vdbg inspect-milvus` 可在记录迁移前根据 Milvus 元数据生成只读迁移规划 JSON 文档。详见 `docs/zh-CN/inspect-milvus-cli.md`。
+
 目前已实现：
 
 - 真实基于 Milvus SDK 的源端数据读取。
