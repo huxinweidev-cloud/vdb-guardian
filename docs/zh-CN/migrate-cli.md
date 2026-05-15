@@ -53,7 +53,7 @@ records_written: 100
 
 ## 支持范围 (Scope)
 
-`vdbg inspect-milvus` 可在记录迁移前根据 Milvus 元数据生成只读迁移规划 JSON 文档。`vdbg plan-pgvector-schema` 可进一步把 inspection plan 转换为 dry-run pgvector schema / DDL 规划，`vdbg compare-schema-plans` 会在任何 DDL apply 步骤前验证两份规划 artifact 是否一致。详见 `docs/zh-CN/inspect-milvus-cli.md`、`docs/zh-CN/plan-pgvector-schema-cli.md` 和 `docs/zh-CN/compare-schema-plans-cli.md`。
+`vdbg inspect-milvus` 可在记录迁移前根据 Milvus 元数据生成只读迁移规划 JSON 文档。`vdbg plan-pgvector-schema` 可进一步把 inspection plan 转换为 dry-run pgvector schema / DDL 规划，`vdbg compare-schema-plans` 会在任何 DDL apply 步骤前验证两份规划 artifact 是否一致，`vdbg apply-pgvector-schema` 可 dry-run 或执行已经验证的 pgvector schema DDL。详见 `docs/zh-CN/inspect-milvus-cli.md`、`docs/zh-CN/plan-pgvector-schema-cli.md`、`docs/zh-CN/compare-schema-plans-cli.md` 和 `docs/zh-CN/apply-pgvector-schema-cli.md`。
 
 目前已实现：
 

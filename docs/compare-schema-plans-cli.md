@@ -11,7 +11,7 @@ inspect-milvus
   -> apply-pgvector-schema later
 ```
 
-The command does not connect to Milvus, does not connect to PostgreSQL, and does not execute SQL.
+The command does not connect to Milvus, does not connect to PostgreSQL, and does not execute SQL. Use `vdbg apply-pgvector-schema` after this comparison passes to dry-run or execute the validated schema DDL.
 
 ## Command
 

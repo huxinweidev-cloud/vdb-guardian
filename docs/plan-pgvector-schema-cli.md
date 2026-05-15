@@ -2,7 +2,7 @@
 
 `vdbg plan-pgvector-schema` reads a Milvus inspection plan and emits a dry-run PostgreSQL/pgvector schema plan with deterministic DDL previews.
 
-It is phase two of broader Milvus-to-pgvector migration planning. The command does not connect to PostgreSQL, execute DDL, create tables, create indexes, or migrate records. Use `vdbg compare-schema-plans` next to validate the generated schema plan against the source inspection plan before applying DDL.
+It is phase two of broader Milvus-to-pgvector migration planning. The command does not connect to PostgreSQL, execute DDL, create tables, create indexes, or migrate records. Use `vdbg compare-schema-plans` next to validate the generated schema plan against the source inspection plan before applying DDL, then use `vdbg apply-pgvector-schema` to dry-run or execute the validated DDL.
 
 ## Command
 

@@ -11,7 +11,7 @@ inspect-milvus
   -> 后续 apply-pgvector-schema
 ```
 
-该命令不会连接 Milvus、不会连接 PostgreSQL，也不会执行 SQL。
+该命令不会连接 Milvus，不会连接 PostgreSQL，也不会执行 SQL。对比通过后，可使用 `vdbg apply-pgvector-schema` dry-run 或执行已经验证的 schema DDL。
 
 ## 命令
 

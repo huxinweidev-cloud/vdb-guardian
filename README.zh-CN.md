@@ -76,6 +76,7 @@ Python 检索行为指纹算法引擎
 - `vdbg inspect-milvus` 只读 Milvus 元数据检查与迁移规划 JSON CLI；
 - `vdbg plan-pgvector-schema` dry-run pgvector schema / DDL 规划 CLI；
 - `vdbg compare-schema-plans` 在 apply pgvector DDL 前执行只读 schema plan 对比门禁；
+- `vdbg apply-pgvector-schema` 默认 dry-run 的 pgvector schema DDL 应用 CLI；
 - 最小化 Milvus→pgvector 迁移运行器边界；
 - 已测试的 Milvus 读 / pgvector 写迁移适配器边界；
 - 真实 Milvus SDK 迁移读取器与 pgx 驱动的 pgvector 迁移写入器；
@@ -248,7 +249,17 @@ docs/zh-CN/plan-pgvector-schema-cli.md
 docs/zh-CN/compare-schema-plans-cli.md
 ```
 
-### 13. pgvector Connector
+### 13. pgvector schema apply CLI
+
+`vdbg apply-pgvector-schema` 会读取已经通过对比的 pgvector schema plan，并默认以 dry-run 模式生成 apply report。只有显式传入 `--execute` 和 `--pgvector-connection-url` 时才会连接 PostgreSQL 并执行 `CREATE EXTENSION IF NOT EXISTS vector`、`CREATE TABLE IF NOT EXISTS ...` 以及可选的 `CREATE INDEX IF NOT EXISTS ...`。它不会 drop、truncate、delete 或 alter 现有数据，连接串不会写入 stdout/report。
+
+详细说明见：
+
+```text
+docs/zh-CN/apply-pgvector-schema-cli.md
+```
+
+### 14. pgvector Connector
 
 最小 pgvector connector 位于：
 

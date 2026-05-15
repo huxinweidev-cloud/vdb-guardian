@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Read-only `vdbg inspect-milvus` CLI for Milvus metadata inspection and migration planning JSON
 - Dry-run `vdbg plan-pgvector-schema` CLI for pgvector schema and DDL planning from inspection plans
 - Read-only `vdbg compare-schema-plans` CLI for validating Milvus inspection plans against pgvector schema plans before applying DDL
+- Dry-run-by-default `vdbg apply-pgvector-schema` CLI for applying planned pgvector schema DDL with JSON reports
 
 ### Changed
 
