@@ -2,7 +2,7 @@
 
 `vdbg compare-full-records` compares two local full-record artifacts and writes a machine-readable equality report.
 
-This command is artifact-only: it does not connect to Milvus, PostgreSQL, or pgvector, and it does not mutate either system. It is intended to follow mapping-driven migration execution from `vdbg migrate --record-mapping` after source and target full-record artifacts have been produced by a controlled workflow.
+This command is artifact-only: it does not connect to Milvus, PostgreSQL, or pgvector, and it does not mutate either system. It is intended to follow mapping-driven migration execution from `vdbg migrate --record-mapping` after source and target full-record artifacts have been produced with `vdbg build-milvus-record-artifact` and `vdbg build-pgvector-record-artifact`.
 
 ## Usage
 
@@ -84,4 +84,4 @@ When the comparison fails, the command still writes the diagnostic JSON report a
 
 ## Current boundary
 
-This slice provides the artifact contract and local comparison CLI. Live Milvus/pgvector full-record artifact builders and automatic `migrate-and-verify --full-record-compare` orchestration are intentionally left for follow-up phases after the artifact-only comparison contract is stable.
+This slice provides the artifact contract, live read-only full-record artifact builders, and local comparison CLI. Automatic `migrate-and-verify --full-record-compare` orchestration is intentionally left for a follow-up phase after the builder and comparison contracts are stable.

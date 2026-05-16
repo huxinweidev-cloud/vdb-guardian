@@ -376,6 +376,29 @@ The command writes:
 
 When both artifacts are built from the same committed fixture and compatible settings, the comparison should report `matched_queries: 10` and no missing source or target queries. Exact distances depend on source/target retrieval behavior.
 
+## Live full-record artifact builder check
+
+After a mapping-driven migration has completed, build source and target full-record artifacts from live services and compare them locally:
+
+```bash
+go run ./cmd/vdbg build-milvus-record-artifact \
+  --milvus-address localhost:19530 \
+  --record-mapping /tmp/vdb-guardian-record-mapping.json \
+  --output /tmp/vdb-guardian-source-full-records.json
+
+go run ./cmd/vdbg build-pgvector-record-artifact \
+  --pgvector-connection-url '[REDACTED]' \
+  --record-mapping /tmp/vdb-guardian-record-mapping.json \
+  --output /tmp/vdb-guardian-target-full-records.json
+
+go run ./cmd/vdbg compare-full-records \
+  --source /tmp/vdb-guardian-source-full-records.json \
+  --target /tmp/vdb-guardian-target-full-records.json \
+  --output /tmp/vdb-guardian-full-record-compare.json
+```
+
+The builder commands are read-only and require a single passing mapping artifact. They write `0600` JSON artifacts and do not print PostgreSQL connection URLs. The comparison command remains artifact-only and exits non-zero on `status: fail` after preserving its diagnostic report.
+
 ## Full-record artifact comparison check
 
 If source and target full-record artifacts already exist, compare them locally for scalar, dynamic metadata, partition, vector hash, and vector dimension equality:
@@ -387,7 +410,7 @@ go run ./cmd/vdbg compare-full-records \
   --output /tmp/vdb-guardian-full-record-compare.json
 ```
 
-The command writes a `0600` JSON report. It exits non-zero on `status: fail` after preserving the report for diagnostics. Live Milvus/pgvector full-record artifact builders are not part of this stack slice yet; the committed sample artifacts exercise the artifact-only contract.
+The command writes a `0600` JSON report. It exits non-zero on `status: fail` after preserving the report for diagnostics. Use the live builder commands above for real Milvus/pgvector full-record snapshots, or the committed sample artifacts to exercise the artifact-only contract.
 
 ## Milvus connector smoke check
 
@@ -399,4 +422,4 @@ scripts/check-migration-stack.sh milvus-port
 
 ## Current limitations
 
-This stack now supports validating the pgvector target-side seed, search, and fingerprint artifact loops, source-side Milvus fixture seeding, search, and fingerprint artifact loops, real Milvus-to-pgvector migration, one-shot migrate-and-verify orchestration, direct source/target fingerprint artifact comparison, and artifact-only full-record equality comparison. Production checkpointing, live full-record artifact builders, Milvus partitions in real smoke fixtures, and cleanup policies remain future work.
+This stack now supports validating the pgvector target-side seed, search, and fingerprint artifact loops, source-side Milvus fixture seeding, search, and fingerprint artifact loops, real Milvus-to-pgvector migration, one-shot migrate-and-verify orchestration, direct source/target fingerprint artifact comparison, live read-only full-record artifact builders, and artifact-only full-record equality comparison. Production checkpointing, automatic full-record compare orchestration inside `migrate-and-verify`, Milvus partitions in real smoke fixtures, and cleanup policies remain future work.

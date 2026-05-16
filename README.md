@@ -44,6 +44,7 @@ Implemented in this scaffold:
 - `vdbg search-pgvector` real pgvector search smoke CLI.
 - `vdbg build-pgvector-artifact` real pgvector fingerprint artifact CLI.
 - `vdbg compare-artifacts` real source/target fingerprint artifact comparison CLI.
+- `vdbg build-milvus-record-artifact` and `vdbg build-pgvector-record-artifact` live read-only full-record artifact builders from passing `map-migration-records` artifacts.
 - `vdbg compare-full-records` local full-record artifact equality comparison CLI for scalar, dynamic metadata, partition, and vector hash checks.
 - `vdbg inspect-milvus` read-only Milvus metadata inspection and migration planning JSON CLI.
 - `vdbg plan-pgvector-schema` dry-run pgvector schema/DDL planning CLI.

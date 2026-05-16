@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Local-artifact `vdbg map-migration-records` CLI for validating full-record mapping plans before execution
 - Optional `vdbg migrate --record-mapping` execution for consuming passing mapping artifacts and migrating mapped scalar fields, dynamic metadata, and partition metadata alongside id/vector records
 - Local-artifact `vdbg compare-full-records` CLI for full-record equality reports across scalar fields, dynamic metadata, partition metadata, vector hashes, and vector dimensions
+- Live read-only `vdbg build-milvus-record-artifact` and `vdbg build-pgvector-record-artifact` CLI builders for producing full-record artifacts from passing mapping plans
 
 ### Changed
 

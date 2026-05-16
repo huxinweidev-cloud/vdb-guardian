@@ -257,6 +257,18 @@ func validatePGVectorMigrationTargetConfig(config connectors.PGVectorConfig, wri
 	return nil
 }
 
+// MilvusReadRequestFromRecordMapping converts a collection record mapping into
+// the Milvus read request needed to fetch full records from the source collection.
+func MilvusReadRequestFromRecordMapping(mapping CollectionRecordMapping) (MilvusMigrationReadRequest, error) {
+	return milvusReadRequestFromMapping(mapping)
+}
+
+// PGVectorWriteRequestFromRecordMapping converts a collection record mapping into
+// the pgvector write request needed to store mapped full records.
+func PGVectorWriteRequestFromRecordMapping(mapping CollectionRecordMapping, records []VectorMigrationRecord) (PGVectorMigrationWriteRequest, error) {
+	return pgvectorWriteRequestFromMapping(mapping, records)
+}
+
 func milvusReadRequestFromMapping(mapping CollectionRecordMapping) (MilvusMigrationReadRequest, error) {
 	if mapping.PrimaryKey == nil {
 		return MilvusMigrationReadRequest{}, fmt.Errorf("record mapping primary key is required")

@@ -2,7 +2,7 @@
 
 `vdbg compare-full-records` 用于对比两份本地 full-record artifact，并写出机器可读的一致性报告。
 
-该命令只处理本地 artifact：它不会连接 Milvus、PostgreSQL 或 pgvector，也不会修改任何系统。它适合放在 `vdbg migrate --record-mapping` 的 mapping-driven migration 之后，用于对已经生成的 source / target full-record artifact 做逐字段一致性校验。
+该命令只处理本地 artifact：它不会连接 Milvus、PostgreSQL 或 pgvector，也不会修改任何系统。它适合放在 `vdbg migrate --record-mapping` 的 mapping-driven migration 之后，用于对 `vdbg build-milvus-record-artifact` 和 `vdbg build-pgvector-record-artifact` 生成的 source / target full-record artifact 做逐字段一致性校验。
 
 ## 用法
 
@@ -84,4 +84,4 @@ artifact 记录 vector hash 和 dimension，而不是原始向量，避免文件
 
 ## 当前边界
 
-本阶段只提供 artifact contract 和本地 compare CLI。真实 Milvus / pgvector full-record artifact builder，以及 `migrate-and-verify --full-record-compare` 自动编排，会在 artifact-only 对比契约稳定后的后续阶段实现。
+本阶段提供 artifact contract、live 只读 full-record artifact builders，以及本地 compare CLI。`migrate-and-verify --full-record-compare` 自动编排会在 builder 与 compare 契约稳定后的后续阶段实现。

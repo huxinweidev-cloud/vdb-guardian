@@ -73,6 +73,7 @@ Python 检索行为指纹算法引擎
 - `vdbg search-pgvector` 真实 pgvector 检索冒烟 CLI；
 - `vdbg build-pgvector-artifact` 真实 pgvector 指纹 artifact CLI；
 - `vdbg compare-artifacts` 真实源/目标指纹 artifact 对比 CLI；
+- `vdbg build-milvus-record-artifact` 与 `vdbg build-pgvector-record-artifact` live 只读 full-record artifact builder，用于消费 passing `map-migration-records` artifact；
 - `vdbg compare-full-records` 本地 full-record artifact 一致性对比 CLI，用于校验 scalar、dynamic metadata、partition 与 vector hash。
 - `vdbg inspect-milvus` 只读 Milvus 元数据检查与迁移规划 JSON CLI；
 - `vdbg plan-pgvector-schema` dry-run pgvector schema / DDL 规划 CLI；
