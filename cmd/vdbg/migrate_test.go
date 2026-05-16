@@ -77,6 +77,64 @@ func TestParseMigrateOptionsWithSchemaPreflightAndOutput(t *testing.T) {
 	}
 }
 
+func TestParseMigrateOptionsWithRecordMapping(t *testing.T) {
+	options, err := parseMigrateOptions([]string{
+		"--milvus-address", "localhost:19530",
+		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--dimension", "8",
+		"--record-mapping", "/tmp/record-mapping.json",
+	})
+	if err != nil {
+		t.Fatalf("parseMigrateOptions returned error: %v", err)
+	}
+	if options.RecordMappingPath != "/tmp/record-mapping.json" {
+		t.Fatalf("unexpected record mapping path: %s", options.RecordMappingPath)
+	}
+}
+
+func TestRunMigrateLoadsRecordMapping(t *testing.T) {
+	dir := t.TempDir()
+	mappingPath := filepath.Join(dir, "record-mapping.json")
+	writeJSONFixture(t, mappingPath, migrateRecordMappingFixture())
+	fake := &fakeMigrateRunner{}
+	err := runMigrateWithFactory(context.Background(), []string{
+		"--milvus-address", "localhost:19530",
+		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--dimension", "3",
+		"--record-mapping", mappingPath,
+	}, fake.newRunner)
+	if err != nil {
+		t.Fatalf("runMigrateWithFactory returned error: %v", err)
+	}
+	if fake.mapping == nil || fake.mapping.SourceCollection != "products" || fake.mapping.TargetTable != "products" {
+		t.Fatalf("mapping was not passed to runner: %#v", fake.mapping)
+	}
+	if fake.config.SourceCollection != "products" || fake.config.TargetTable != "products" {
+		t.Fatalf("migration config should use mapping collection/table: %+v", fake.config)
+	}
+}
+
+func TestRunMigrateRejectsBlockingRecordMapping(t *testing.T) {
+	dir := t.TempDir()
+	mappingPath := filepath.Join(dir, "record-mapping.json")
+	mappingPlan := migrateRecordMappingFixture()
+	mappingPlan.Status = migration.RecordMappingStatusFail
+	writeJSONFixture(t, mappingPath, mappingPlan)
+	fake := &fakeMigrateRunner{}
+	err := runMigrateWithFactory(context.Background(), []string{
+		"--milvus-address", "localhost:19530",
+		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--dimension", "3",
+		"--record-mapping", mappingPath,
+	}, fake.newRunner)
+	if err == nil || !strings.Contains(err.Error(), "record mapping status") {
+		t.Fatalf("expected record mapping status error, got %v", err)
+	}
+	if fake.migrated {
+		t.Fatal("migration should not run when record mapping is blocking")
+	}
+}
+
 func TestParseMigrateOptionsRejectsIncompleteSchemaPreflight(t *testing.T) {
 	_, err := parseMigrateOptions([]string{
 		"--milvus-address", "localhost:19530",
@@ -214,7 +272,7 @@ func TestRunMigratePropagatesFactoryAndRunnerErrors(t *testing.T) {
 		"--milvus-address", "localhost:19530",
 		"--pgvector-connection-url", "postgres://[REDACTED]",
 		"--dimension", "8",
-	}, func(connectors.MilvusConfig, connectors.PGVectorConfig, migration.VectorMigrationConfig) (migrateRunner, error) {
+	}, func(connectors.MilvusConfig, connectors.PGVectorConfig, migration.VectorMigrationConfig, *migration.CollectionRecordMapping) (migrateRunner, error) {
 		return nil, errors.New("factory failed")
 	})
 	if err == nil || !strings.Contains(err.Error(), "factory failed") {
@@ -236,15 +294,40 @@ type fakeMigrateRunner struct {
 	milvus   connectors.MilvusConfig
 	pgvector connectors.PGVectorConfig
 	config   migration.VectorMigrationConfig
+	mapping  *migration.CollectionRecordMapping
 	migrated bool
 	err      error
 }
 
-func (f *fakeMigrateRunner) newRunner(milvus connectors.MilvusConfig, pgvector connectors.PGVectorConfig, config migration.VectorMigrationConfig) (migrateRunner, error) {
+func (f *fakeMigrateRunner) newRunner(milvus connectors.MilvusConfig, pgvector connectors.PGVectorConfig, config migration.VectorMigrationConfig, mapping *migration.CollectionRecordMapping) (migrateRunner, error) {
 	f.milvus = milvus
 	f.pgvector = pgvector
+	f.mapping = mapping
+	if mapping != nil {
+		config.SourceCollection = mapping.SourceCollection
+		config.TargetTable = mapping.TargetTable
+	}
 	f.config = config
 	return f, nil
+}
+
+func migrateRecordMappingFixture() migration.RecordMappingPlan {
+	return migration.RecordMappingPlan{
+		SchemaVersion: migration.RecordMappingPlanVersion,
+		Status:        migration.RecordMappingStatusPass,
+		Mappings: []migration.CollectionRecordMapping{{
+			SourceCollection: "products",
+			TargetSchema:     "public",
+			TargetTable:      "products",
+			PrimaryKey:       &migration.RecordFieldMapping{Kind: migration.RecordMappingKindPrimaryKey, SourceField: "sku", TargetColumn: "sku", TargetType: "varchar(64)", SupportLevel: "supported"},
+			Vector:           &migration.RecordFieldMapping{Kind: migration.RecordMappingKindVector, SourceField: "embedding", TargetColumn: "embedding", TargetType: "vector(3)", SupportLevel: "supported"},
+			Scalars: []migration.RecordFieldMapping{
+				{Kind: migration.RecordMappingKindScalar, SourceField: "title", TargetColumn: "title", TargetType: "text", SupportLevel: "supported"},
+			},
+			DynamicMetadata:   &migration.RecordFieldMapping{Kind: migration.RecordMappingKindDynamicMetadata, SourceField: "_milvus_dynamic", TargetColumn: "milvus_dynamic", TargetType: "jsonb", SupportLevel: "degraded"},
+			PartitionMetadata: &migration.RecordFieldMapping{Kind: migration.RecordMappingKindPartitionMetadata, SourceField: "_milvus_partition", TargetColumn: "milvus_partition", TargetType: "text", SupportLevel: "degraded"},
+		}},
+	}
 }
 
 func (f *fakeMigrateRunner) Migrate(ctx context.Context) (migration.VectorMigrationResult, error) {

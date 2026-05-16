@@ -340,6 +340,7 @@ go run ./cmd/vdbg migrate \
   --require-schema-match \
   --schema-plan /tmp/vdb-guardian-pgvector-schema-plan.json \
   --live-schema /tmp/vdb-guardian-live-pgvector-schema.json \
+  --record-mapping /tmp/vdb-guardian-record-mapping.json \
   --output /tmp/vdb-guardian-migration-report.json \
   --job-id migration-smoke
 ```
@@ -350,7 +351,7 @@ Expected small-fixture success markers:
 - `apply-pgvector-schema` succeeds without creating an `exact_scan` index for Milvus `FLAT`; `FLAT` means exact scan/no physical pgvector index.
 - `compare-applied-schema` has `mismatch_count: 0`; extra live primary-key backing indexes may remain warnings.
 - `map-migration-records` status `pass` and output permission `0600`.
-- `migrate` reports `records_read: 100`, `records_written: 100`, and output permission `0600`.
+- `migrate` reports `records_read: 100`, `records_written: 100`, and output permission `0600`. With `--record-mapping`, it uses the mapping artifact for source/target field projection and migrates mapped scalar/dynamic/partition metadata columns when present.
 - Target row count is `100` and `vector_dims(embedding)` is `8`.
 
 If default ports are occupied, override Compose ports before startup, for example `VDB_GUARDIAN_POSTGRES_PORT=15432` and `VDB_GUARDIAN_MILVUS_PORT=19531`, then use those same ports in every command.

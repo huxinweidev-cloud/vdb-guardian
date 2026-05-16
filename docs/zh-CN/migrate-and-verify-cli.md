@@ -28,6 +28,7 @@ go run ./cmd/vdbg migrate-and-verify \
   --target-table items \
   --pgvector-id-column id \
   --pgvector-vector-column embedding \
+  --record-mapping /tmp/vdb-guardian-record-mapping.json \
   --artifact-dir /tmp/vdb-guardian-run \
   --job-id migrate-and-verify-smoke \
   --dimension 8 \
@@ -71,6 +72,7 @@ diagnostic_report: /tmp/vdb-guardian-run/migrate-and-verify-smoke-diagnostic-rep
 - `--pgvector-connection-url`: PostgreSQL 连接 URL。请在日志和文档中对该信息进行脱敏处理。
 - `--artifact-dir`: 用于存放源端、目标端和比对结果产物文件的目录。
 - `--dimension`: 预期的向量维度。
+- `--record-mapping`: 可选的 `vdbg map-migration-records` JSON 路径。提供后，迁移步骤会在指纹验证前根据 mapping artifact 执行 full-record migration。
 
 ## 默认值 (Defaults)
 

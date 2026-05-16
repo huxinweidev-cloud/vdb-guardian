@@ -218,65 +218,112 @@ func (i *realMilvusMigrationResultSetIterator) Next(ctx context.Context) (milvus
 	if vectorColumn == nil {
 		return milvusMigrationQueryBatch{}, fmt.Errorf("milvus query result missing vector field %q", i.request.VectorField)
 	}
-	scalarColumns := map[string]milvusResultColumn{}
-	for _, field := range i.request.ScalarFields {
-		column := i.resultSet.GetColumn(field)
-		if column == nil {
-			return milvusMigrationQueryBatch{}, fmt.Errorf("milvus query result missing scalar field %q", field)
-		}
-		scalarColumns[field] = column
+	scalarColumns, err := i.scalarColumns()
+	if err != nil {
+		return milvusMigrationQueryBatch{}, err
 	}
-	var dynamicColumn milvusResultColumn
-	if i.request.DynamicField != "" {
-		dynamicColumn = i.resultSet.GetColumn(i.request.DynamicField)
-	}
-	var partitionColumn milvusResultColumn
-	if i.request.PartitionField != "" {
-		partitionColumn = i.resultSet.GetColumn(i.request.PartitionField)
+	requestColumns := milvusRecordRequestColumns{
+		idColumn:        idColumn,
+		vectorColumn:    vectorColumn,
+		scalarColumns:   scalarColumns,
+		dynamicColumn:   i.optionalColumn(i.request.DynamicField),
+		partitionColumn: i.optionalColumn(i.request.PartitionField),
+		idField:         i.request.IDField,
+		vectorField:     i.request.VectorField,
+		dynamicField:    i.request.DynamicField,
+		partitionField:  i.request.PartitionField,
 	}
 	records := make([]VectorMigrationRecord, i.resultSet.Len())
 	for index := 0; index < i.resultSet.Len(); index++ {
-		id, err := idColumn.GetAsString(index)
+		record, err := readMilvusMigrationRecord(requestColumns, index)
 		if err != nil {
-			return milvusMigrationQueryBatch{}, fmt.Errorf("read milvus id at index %d: %w", index, err)
-		}
-		value, err := vectorColumn.Get(index)
-		if err != nil {
-			return milvusMigrationQueryBatch{}, fmt.Errorf("read milvus vector at index %d: %w", index, err)
-		}
-		vector32, ok := value.([]float32)
-		if !ok {
-			return milvusMigrationQueryBatch{}, fmt.Errorf("milvus vector field %q at index %d has type %T", i.request.VectorField, index, value)
-		}
-		record := VectorMigrationRecord{ID: id, Vector: float32VectorToFloat64(vector32)}
-		if len(scalarColumns) > 0 {
-			record.Scalars = make(map[string]any, len(scalarColumns))
-			for field, column := range scalarColumns {
-				value, err := column.Get(index)
-				if err != nil {
-					return milvusMigrationQueryBatch{}, fmt.Errorf("read milvus scalar field %q at index %d: %w", field, index, err)
-				}
-				record.Scalars[field] = value
-			}
-		}
-		if dynamicColumn != nil {
-			metadata, err := readMilvusDynamicMetadata(dynamicColumn, index)
-			if err != nil {
-				return milvusMigrationQueryBatch{}, err
-			}
-			record.DynamicMetadata = metadata
-		}
-		if partitionColumn != nil {
-			partition, err := partitionColumn.GetAsString(index)
-			if err != nil {
-				return milvusMigrationQueryBatch{}, fmt.Errorf("read milvus partition field %q at index %d: %w", i.request.PartitionField, index, err)
-			}
-			record.Partition = partition
+			return milvusMigrationQueryBatch{}, err
 		}
 		records[index] = record
 	}
 	i.consumed = true
 	return milvusMigrationQueryBatch{Records: records}, nil
+}
+
+func (i *realMilvusMigrationResultSetIterator) scalarColumns() (map[string]milvusResultColumn, error) {
+	scalarColumns := map[string]milvusResultColumn{}
+	for _, field := range i.request.ScalarFields {
+		column := i.resultSet.GetColumn(field)
+		if column == nil {
+			return nil, fmt.Errorf("milvus query result missing scalar field %q", field)
+		}
+		scalarColumns[field] = column
+	}
+	return scalarColumns, nil
+}
+
+func (i *realMilvusMigrationResultSetIterator) optionalColumn(field string) milvusResultColumn {
+	if field == "" {
+		return nil
+	}
+	return i.resultSet.GetColumn(field)
+}
+
+type milvusRecordRequestColumns struct {
+	idColumn        milvusResultColumn
+	vectorColumn    milvusResultColumn
+	scalarColumns   map[string]milvusResultColumn
+	dynamicColumn   milvusResultColumn
+	partitionColumn milvusResultColumn
+	idField         string
+	vectorField     string
+	dynamicField    string
+	partitionField  string
+}
+
+func readMilvusMigrationRecord(columns milvusRecordRequestColumns, index int) (VectorMigrationRecord, error) {
+	id, err := columns.idColumn.GetAsString(index)
+	if err != nil {
+		return VectorMigrationRecord{}, fmt.Errorf("read milvus id at index %d: %w", index, err)
+	}
+	value, err := columns.vectorColumn.Get(index)
+	if err != nil {
+		return VectorMigrationRecord{}, fmt.Errorf("read milvus vector at index %d: %w", index, err)
+	}
+	vector32, ok := value.([]float32)
+	if !ok {
+		return VectorMigrationRecord{}, fmt.Errorf("milvus vector field %q at index %d has type %T", columns.vectorField, index, value)
+	}
+	record := VectorMigrationRecord{ID: id, Vector: float32VectorToFloat64(vector32)}
+	if len(columns.scalarColumns) > 0 {
+		scalars, err := readMilvusScalars(columns.scalarColumns, index)
+		if err != nil {
+			return VectorMigrationRecord{}, err
+		}
+		record.Scalars = scalars
+	}
+	if columns.dynamicColumn != nil {
+		metadata, err := readMilvusDynamicMetadata(columns.dynamicColumn, index)
+		if err != nil {
+			return VectorMigrationRecord{}, err
+		}
+		record.DynamicMetadata = metadata
+	}
+	if columns.partitionColumn != nil {
+		partition, err := columns.partitionColumn.GetAsString(index)
+		if err != nil {
+			return VectorMigrationRecord{}, fmt.Errorf("read milvus partition field %q at index %d: %w", columns.partitionField, index, err)
+		}
+		record.Partition = partition
+	}
+	return record, nil
+}
+
+func readMilvusScalars(columns map[string]milvusResultColumn, index int) (map[string]any, error) {
+	scalars := make(map[string]any, len(columns))
+	for field, column := range columns {
+		value, err := column.Get(index)
+		if err != nil {
+			return nil, fmt.Errorf("read milvus scalar field %q at index %d: %w", field, index, err)
+		}
+		scalars[field] = value
+	}
+	return scalars, nil
 }
 
 type milvusResultColumn interface {
@@ -400,21 +447,11 @@ func (db pgxPGVectorMigrationDB) Exec(ctx context.Context, sql string, args ...a
 	return err
 }
 
-func pgvectorMigrationUpsertSQL(table, idColumn, vectorColumn string) string {
-	return fmt.Sprintf(
-		`INSERT INTO %s (%s, %s) VALUES ($1, $2::vector) ON CONFLICT (%s) DO UPDATE SET %s = EXCLUDED.%s`,
-		quotePGVectorSeedIdentifier(table),
-		quotePGVectorSeedIdentifier(idColumn),
-		quotePGVectorSeedIdentifier(vectorColumn),
-		quotePGVectorSeedIdentifier(idColumn),
-		quotePGVectorSeedIdentifier(vectorColumn),
-		quotePGVectorSeedIdentifier(vectorColumn),
-	)
-}
-
 func pgvectorMigrationMappedUpsertSQL(request PGVectorMigrationWriteRequest) string {
 	columns := []string{request.IDColumn, request.VectorColumn}
-	columns = append(columns, request.ScalarColumns...)
+	for _, scalar := range request.ScalarColumns {
+		columns = append(columns, scalar.TargetColumn)
+	}
 	if request.DynamicColumn != "" {
 		columns = append(columns, request.DynamicColumn)
 	}
@@ -454,8 +491,8 @@ func pgvectorMigrationMappedArgs(record VectorMigrationRecord, request PGVectorM
 		return nil, fmt.Errorf("format pgvector migration vector for %q: %w", record.ID, err)
 	}
 	args := []any{record.ID, literal}
-	for _, column := range request.ScalarColumns {
-		args = append(args, record.Scalars[column])
+	for _, scalar := range request.ScalarColumns {
+		args = append(args, record.Scalars[scalar.SourceField])
 	}
 	if request.DynamicColumn != "" {
 		data, err := marshalPGVectorMigrationJSON(record.DynamicMetadata)

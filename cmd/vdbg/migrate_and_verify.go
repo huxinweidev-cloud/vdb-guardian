@@ -221,6 +221,7 @@ func parseMigrateAndVerifyOptions(args []string) (migrateAndVerifyOptions, error
 	var targetTable string
 	var pgvectorIDColumn string
 	var pgvectorVectorColumn string
+	var recordMappingPath string
 	var artifactDir string
 	var jobID string
 	var dimension int
@@ -243,6 +244,7 @@ func parseMigrateAndVerifyOptions(args []string) (migrateAndVerifyOptions, error
 	flagSet.StringVar(&targetTable, "target-table", "items", "pgvector target table")
 	flagSet.StringVar(&pgvectorIDColumn, "pgvector-id-column", "id", "pgvector ID column")
 	flagSet.StringVar(&pgvectorVectorColumn, "pgvector-vector-column", "embedding", "pgvector vector column")
+	flagSet.StringVar(&recordMappingPath, "record-mapping", "", "optional map-migration-records JSON path for full-record migration")
 	flagSet.StringVar(&artifactDir, "artifact-dir", "", "directory to write source, target, and comparison artifacts")
 	flagSet.StringVar(&jobID, "job-id", "migrate-and-verify", "job id used for artifact filenames")
 	flagSet.IntVar(&dimension, "dimension", 0, "vector dimension to validate during migration")
@@ -280,6 +282,7 @@ func parseMigrateAndVerifyOptions(args []string) (migrateAndVerifyOptions, error
 				IDColumn:      pgvectorIDColumn,
 				VectorColumn:  pgvectorVectorColumn,
 			},
+			RecordMappingPath: recordMappingPath,
 			MigrationConfig: migration.VectorMigrationConfig{
 				SourceCollection: sourceCollection,
 				TargetTable:      targetTable,
@@ -310,7 +313,11 @@ func (realMigrateAndVerifySteps) ResetTarget(ctx context.Context, options migrat
 }
 
 func (realMigrateAndVerifySteps) Migrate(ctx context.Context, options migrateOptions) (migration.VectorMigrationResult, error) {
-	runner, err := newMigrateRunner(options.MilvusConfig, options.PGVectorConfig, options.MigrationConfig)
+	mapping, err := loadMigrateRecordMapping(options)
+	if err != nil {
+		return migration.VectorMigrationResult{}, err
+	}
+	runner, err := newMigrateRunner(options.MilvusConfig, options.PGVectorConfig, options.MigrationConfig, mapping)
 	if err != nil {
 		return migration.VectorMigrationResult{}, err
 	}

@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Read-only `vdbg compare-applied-schema` CLI for detecting planned-vs-live pgvector schema drift before record migration
 - Optional `vdbg migrate --require-schema-match` preflight and `--output` JSON result report for standalone migrations
 - Local-artifact `vdbg map-migration-records` CLI for validating full-record mapping plans before execution
+- Optional `vdbg migrate --record-mapping` execution for consuming passing mapping artifacts and migrating mapped scalar fields, dynamic metadata, and partition metadata alongside id/vector records
 
 ### Changed
 

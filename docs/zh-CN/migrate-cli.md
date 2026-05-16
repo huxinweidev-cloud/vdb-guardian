@@ -2,6 +2,8 @@
 
 `vdbg migrate` 命令用于执行首个真实的 Milvus 到 pgvector 记录迁移流程。
 
+它既可以保持原有 `id + vector` 模式，也可以通过 `--record-mapping` 消费 `vdbg map-migration-records` 生成的 JSON artifact，把映射后的 scalar 字段、dynamic metadata 和 partition metadata 与主键/向量一起迁移。
+
 它通过 Milvus SDK 查询路径从 Milvus 源集合读取规范化记录，并通过基于 pgx 的写入器将它们写入 pgvector 目标表。
 
 该命令不会启动 Docker、创建服务、构建指纹产物或比较检索行为。它假设本地迁移环境栈或同等的临时测试数据库已处于运行状态。
@@ -23,6 +25,7 @@ go run ./cmd/vdbg migrate \
   --require-schema-match \
   --schema-plan /tmp/vdb-guardian-pgvector-schema-plan.json \
   --live-schema /tmp/vdb-guardian-live-pgvector-schema.json \
+  --record-mapping /tmp/vdb-guardian-record-mapping.json \
   --output /tmp/vdb-guardian-migration-report.json \
   --job-id migration-smoke
 ```
@@ -43,6 +46,20 @@ records_written: 100
 当提供 `--output` 时，命令还会写出机器可读 JSON report，文件权限为 `0600`。该 report 会记录 job id、源集合、目标表、schema preflight 状态、可选 record-mapping summary metadata、向量维度、读取记录数和写入记录数，但不会包含 PostgreSQL 连接 URL。
 
 迁移前如需验证 full-record mapping，请先对同一 schema plan 运行 `vdbg map-migration-records`。该命令只读取本地 artifact，不连接 Milvus 或 PostgreSQL。
+
+## 可选 full-record mapping
+
+使用 `--record-mapping` 可以让 `migrate` 消费 `vdbg map-migration-records` 的机器可读输出：
+
+```bash
+go run ./cmd/vdbg migrate \
+  --milvus-address localhost:19530 \
+  --pgvector-connection-url '[REDACTED]' \
+  --dimension 8 \
+  --record-mapping /tmp/vdb-guardian-record-mapping.json
+```
+
+提供该参数后，mapping artifact 会成为源集合、目标表、主键、向量字段、scalar 列、dynamic metadata 和 partition metadata 的事实来源。如果 mapping status 不是 `pass`，如果 artifact 中不是恰好一个 collection mapping，或者缺少主键/向量 mapping，命令会在创建 runner 之前拒绝执行。读取 mapping artifact 是纯本地操作，不会连接 Milvus 或 PostgreSQL。
 
 ## 可选 schema preflight
 
@@ -75,6 +92,7 @@ go run ./cmd/vdbg migrate \
 - `--require-schema-match`: 要求 planned-vs-live schema 对比通过后才启动迁移。
 - `--schema-plan`: pgvector schema plan JSON 路径。启用 `--require-schema-match` 时必填。
 - `--live-schema`: live pgvector schema inspection JSON 路径。启用 `--require-schema-match` 时必填。
+- `--record-mapping`: 可选的 `vdbg map-migration-records` JSON 路径，用于 mapping-driven full-record migration。artifact 必须为 `status: pass`，且只能包含一个 collection mapping。
 - `--output`: 可选的 migration result report JSON 输出路径，文件权限为 `0600`。
 - `--job-id`: 写入 migration result report 的可选任务标识。
 
@@ -100,14 +118,14 @@ go run ./cmd/vdbg migrate \
 - CLI 标志解析与注入运行器的单元测试。
 - 通过 `--require-schema-match` 可选执行 planned-vs-live schema preflight。
 - 通过 `--output` 可选写出机器可读 migration result JSON report。
+- 通过 `--record-mapping` 可选执行 mapping-driven full-record migration，从通过校验的本地 mapping artifact 迁移 scalar 字段、dynamic metadata 和 partition metadata。
 - 包含已读取和已写入记录数的摘要输出。
 
 尚未实现：
 
 - 在此命令内生成源/目标指纹产物。
 - 在此命令内生成比较结果产物。
-- 元数据字段。
-- Milvus 分区。
+- full-record equality comparison。
 - 增量检查点 (Checkpoints)。
 - 生产环境级别的批量导入 (Bulk import)。
 

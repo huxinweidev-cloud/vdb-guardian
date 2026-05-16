@@ -83,7 +83,7 @@ Python 检索行为指纹算法引擎
 - 最小化 Milvus→pgvector 迁移运行器边界，支持可选 schema preflight 和 JSON result report；
 - 已测试的 Milvus 读 / pgvector 写迁移适配器边界；
 - 真实 Milvus SDK 迁移读取器与 pgx 驱动的 pgvector 迁移写入器；
-- `vdbg migrate` 真实 Milvus→pgvector 迁移 CLI；
+- `vdbg migrate` 真实 Milvus→pgvector 迁移 CLI，支持从 `map-migration-records` artifact 可选执行 mapping-driven full-record migration。
 - `vdbg migrate-and-verify` 一键真实迁移、严格行数校验、质量门禁、指纹对比与 Markdown 报告 CLI，并支持面向临时冒烟环境的可选 `--reset-target` 清理；
 - 合成向量数据生成器；
 - 指纹 artifact builder：`internal/fingerprints`；
@@ -295,6 +295,17 @@ go run ./cmd/vdbg compare-applied-schema \
 go run ./cmd/vdbg map-migration-records \
   --schema-plan /tmp/vdb-guardian-pgvector-schema-plan.json \
   --output /tmp/vdb-guardian-record-mapping.json
+
+go run ./cmd/vdbg migrate \
+  --milvus-address localhost:19530 \
+  --pgvector-connection-url '[REDACTED]' \
+  --dimension 8 \
+  --require-schema-match \
+  --schema-plan /tmp/vdb-guardian-pgvector-schema-plan.json \
+  --live-schema /tmp/vdb-guardian-live-pgvector-schema.json \
+  --record-mapping /tmp/vdb-guardian-record-mapping.json \
+  --output /tmp/vdb-guardian-migration-report.json \
+  --job-id migration-smoke
 ```
 
 详见 `docs/zh-CN/map-migration-records-cli.md`。

@@ -113,14 +113,17 @@ func TestPGXPGVectorMigrationWriterWritesMappedFullRecords(t *testing.T) {
 	db := &fakePGVectorMigrationDB{}
 	writer := newPGXPGVectorMigrationWriterWithDB(db)
 	request := PGVectorMigrationWriteRequest{
-		Table:           "products",
-		IDColumn:        "sku",
-		VectorColumn:    "embedding",
-		ScalarColumns:   []string{"title", "price"},
+		Table:        "products",
+		IDColumn:     "sku",
+		VectorColumn: "embedding",
+		ScalarColumns: []PGVectorMigrationScalarColumn{
+			{SourceField: "product_title", TargetColumn: "title"},
+			{SourceField: "price", TargetColumn: "price"},
+		},
 		DynamicColumn:   "milvus_dynamic",
 		PartitionColumn: "milvus_partition",
 		Records: []VectorMigrationRecord{{
-			ID: "sku-1", Vector: []float64{0.1, 0.2}, Scalars: map[string]any{"title": "First", "price": 9.5}, DynamicMetadata: map[string]any{"brand": "acme"}, Partition: "tenant_a",
+			ID: "sku-1", Vector: []float64{0.1, 0.2}, Scalars: map[string]any{"product_title": "First", "price": 9.5}, DynamicMetadata: map[string]any{"brand": "acme"}, Partition: "tenant_a",
 		}},
 	}
 

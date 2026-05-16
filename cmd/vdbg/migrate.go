@@ -20,6 +20,7 @@ type migrateOptions struct {
 	RequireSchemaMatch bool
 	SchemaPlanPath     string
 	LiveSchemaPath     string
+	RecordMappingPath  string
 	OutputPath         string
 	JobID              string
 }
@@ -41,7 +42,7 @@ func runMigrateCommand(ctx context.Context, args []string) error {
 	return runMigrateWithFactory(ctx, args, newMigrateRunner)
 }
 
-func runMigrateWithFactory(ctx context.Context, args []string, factory func(connectors.MilvusConfig, connectors.PGVectorConfig, migration.VectorMigrationConfig) (migrateRunner, error)) error {
+func runMigrateWithFactory(ctx context.Context, args []string, factory func(connectors.MilvusConfig, connectors.PGVectorConfig, migration.VectorMigrationConfig, *migration.CollectionRecordMapping) (migrateRunner, error)) error {
 	options, err := parseMigrateOptions(args)
 	if err != nil {
 		return err
@@ -50,7 +51,11 @@ func runMigrateWithFactory(ctx context.Context, args []string, factory func(conn
 	if preflightErr != nil {
 		return preflightErr
 	}
-	runner, err := factory(options.MilvusConfig, options.PGVectorConfig, options.MigrationConfig)
+	mapping, err := loadMigrateRecordMapping(options)
+	if err != nil {
+		return err
+	}
+	runner, err := factory(options.MilvusConfig, options.PGVectorConfig, options.MigrationConfig, mapping)
 	if err != nil {
 		return err
 	}
@@ -101,6 +106,7 @@ func parseMigrateOptions(args []string) (migrateOptions, error) {
 	var dimension int
 	var schemaPlanPath string
 	var liveSchemaPath string
+	var recordMappingPath string
 	var outputPath string
 	var jobID string
 	var requireSchemaMatch bool
@@ -118,6 +124,7 @@ func parseMigrateOptions(args []string) (migrateOptions, error) {
 	flagSet.BoolVar(&requireSchemaMatch, "require-schema-match", false, "require planned-vs-live schema match before migration")
 	flagSet.StringVar(&schemaPlanPath, "schema-plan", "", "path to pgvector schema plan JSON")
 	flagSet.StringVar(&liveSchemaPath, "live-schema", "", "path to live pgvector schema inspection JSON")
+	flagSet.StringVar(&recordMappingPath, "record-mapping", "", "optional map-migration-records JSON path for full-record migration")
 	flagSet.StringVar(&outputPath, "output", "", "optional migration result report JSON output path")
 	flagSet.StringVar(&jobID, "job-id", "", "optional job id for the migration report")
 	if err := flagSet.Parse(args); err != nil {
@@ -163,6 +170,7 @@ func parseMigrateOptions(args []string) (migrateOptions, error) {
 		RequireSchemaMatch: requireSchemaMatch,
 		SchemaPlanPath:     schemaPlanPath,
 		LiveSchemaPath:     liveSchemaPath,
+		RecordMappingPath:  recordMappingPath,
 		OutputPath:         outputPath,
 		JobID:              jobID,
 	}, nil
@@ -190,6 +198,27 @@ func runMigrateSchemaPreflight(options migrateOptions) error {
 	return nil
 }
 
+func loadMigrateRecordMapping(options migrateOptions) (*migration.CollectionRecordMapping, error) {
+	if options.RecordMappingPath == "" {
+		return nil, nil
+	}
+	var plan migration.RecordMappingPlan
+	if err := readMigrateJSONFile(options.RecordMappingPath, &plan); err != nil {
+		return nil, fmt.Errorf("read record mapping: %w", err)
+	}
+	if plan.Status != migration.RecordMappingStatusPass {
+		return nil, fmt.Errorf("record mapping status is %q", plan.Status)
+	}
+	if len(plan.Mappings) != 1 {
+		return nil, fmt.Errorf("record mapping must contain exactly one collection, got %d", len(plan.Mappings))
+	}
+	collection := plan.Mappings[0]
+	if collection.PrimaryKey == nil || collection.Vector == nil {
+		return nil, fmt.Errorf("record mapping is missing primary key or vector mapping")
+	}
+	return &collection, nil
+}
+
 func readMigrateJSONFile(path string, out any) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -198,7 +227,7 @@ func readMigrateJSONFile(path string, out any) error {
 	return json.Unmarshal(data, out)
 }
 
-func newMigrateRunner(milvusConfig connectors.MilvusConfig, pgvectorConfig connectors.PGVectorConfig, migrationConfig migration.VectorMigrationConfig) (migrateRunner, error) {
+func newMigrateRunner(milvusConfig connectors.MilvusConfig, pgvectorConfig connectors.PGVectorConfig, migrationConfig migration.VectorMigrationConfig, recordMapping *migration.CollectionRecordMapping) (migrateRunner, error) {
 	source, err := migration.NewMilvusVectorMigrationSource(milvusConfig, nil)
 	if err != nil {
 		return nil, err
@@ -206,6 +235,12 @@ func newMigrateRunner(milvusConfig connectors.MilvusConfig, pgvectorConfig conne
 	target, err := migration.NewPGVectorMigrationTarget(pgvectorConfig, nil)
 	if err != nil {
 		return nil, err
+	}
+	if recordMapping != nil {
+		source = source.WithRecordMapping(*recordMapping)
+		target = target.WithRecordMapping(*recordMapping)
+		migrationConfig.SourceCollection = recordMapping.SourceCollection
+		migrationConfig.TargetTable = recordMapping.TargetTable
 	}
 	runner, err := migration.NewVectorMigrationRunner(migrationConfig, source, target)
 	if err != nil {

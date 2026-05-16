@@ -16,11 +16,16 @@ type MilvusMigrationReadRequest struct {
 	PartitionField string
 }
 
+type PGVectorMigrationScalarColumn struct {
+	SourceField  string
+	TargetColumn string
+}
+
 type PGVectorMigrationWriteRequest struct {
 	Table           string
 	IDColumn        string
 	VectorColumn    string
-	ScalarColumns   []string
+	ScalarColumns   []PGVectorMigrationScalarColumn
 	DynamicColumn   string
 	PartitionColumn string
 	Records         []VectorMigrationRecord
@@ -284,7 +289,7 @@ func pgvectorWriteRequestFromMapping(mapping CollectionRecordMapping, records []
 	}
 	request := PGVectorMigrationWriteRequest{Table: mapping.TargetTable, IDColumn: mapping.PrimaryKey.TargetColumn, VectorColumn: mapping.Vector.TargetColumn, Records: copyVectorMigrationRecords(records)}
 	for _, scalar := range mapping.Scalars {
-		request.ScalarColumns = append(request.ScalarColumns, scalar.TargetColumn)
+		request.ScalarColumns = append(request.ScalarColumns, PGVectorMigrationScalarColumn{SourceField: scalar.SourceField, TargetColumn: scalar.TargetColumn})
 	}
 	if mapping.DynamicMetadata != nil {
 		request.DynamicColumn = mapping.DynamicMetadata.TargetColumn
@@ -322,8 +327,11 @@ func validateMigrationWriteRequest(request PGVectorMigrationWriteRequest) error 
 			}
 		}
 	}
-	for _, column := range request.ScalarColumns {
-		if err := validateMigrationAdapterIdentifier("pgvector scalar column", column); err != nil {
+	for _, scalar := range request.ScalarColumns {
+		if err := validateMigrationAdapterIdentifier("pgvector scalar source field", scalar.SourceField); err != nil {
+			return err
+		}
+		if err := validateMigrationAdapterIdentifier("pgvector scalar column", scalar.TargetColumn); err != nil {
 			return err
 		}
 	}

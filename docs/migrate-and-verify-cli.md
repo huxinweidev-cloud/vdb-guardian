@@ -27,6 +27,7 @@ go run ./cmd/vdbg migrate-and-verify \
   --target-table items \
   --pgvector-id-column id \
   --pgvector-vector-column embedding \
+  --record-mapping /tmp/vdb-guardian-record-mapping.json \
   --artifact-dir /tmp/vdb-guardian-run \
   --job-id migrate-and-verify-smoke \
   --dimension 8 \
@@ -70,6 +71,7 @@ diagnostic_report: /tmp/vdb-guardian-run/migrate-and-verify-smoke-diagnostic-rep
 - `--pgvector-connection-url`: PostgreSQL connection URL. Redact this in logs and docs.
 - `--artifact-dir`: directory for source, target, and result artifacts.
 - `--dimension`: expected vector dimension.
+- `--record-mapping`: optional `vdbg map-migration-records` JSON path. When supplied, the migration step uses the mapping artifact for full-record execution before fingerprint verification.
 
 ## Defaults
 

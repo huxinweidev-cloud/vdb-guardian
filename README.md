@@ -54,7 +54,7 @@ Implemented in this scaffold:
 - Internal minimal Milvus-to-pgvector migration runner boundary with optional schema preflight and JSON result report.
 - Tested migration source/target adapter boundary for Milvus reads and pgvector writes.
 - Real Milvus SDK migration reader and pgx-backed pgvector migration writer.
-- `vdbg migrate` real Milvus-to-pgvector migration CLI.
+- `vdbg migrate` real Milvus-to-pgvector migration CLI with optional mapping-driven full-record execution from `map-migration-records` artifacts.
 - `vdbg migrate-and-verify` one-shot migration, strict count validation, quality gates, fingerprint comparison, and Markdown report CLI, with optional `--reset-target` cleanup for disposable smoke runs.
 - Synthetic vector dataset generator.
 - Fingerprint artifact builder.
@@ -143,6 +143,7 @@ go run ./cmd/vdbg apply-pgvector-schema --schema-plan /tmp/vdb-guardian-pgvector
 go run ./cmd/vdbg inspect-pgvector-schema --pgvector-connection-url '[REDACTED]' --target-schema public --output /tmp/vdb-guardian-live-pgvector-schema.json
 go run ./cmd/vdbg compare-applied-schema --schema-plan /tmp/vdb-guardian-pgvector-schema-plan.json --live-schema /tmp/vdb-guardian-live-pgvector-schema.json --output /tmp/vdb-guardian-applied-schema-compare-report.json
 go run ./cmd/vdbg map-migration-records --schema-plan /tmp/vdb-guardian-pgvector-schema-plan.json --output /tmp/vdb-guardian-record-mapping.json
+go run ./cmd/vdbg migrate --milvus-address localhost:19530 --pgvector-connection-url '[REDACTED]' --dimension 8 --require-schema-match --schema-plan /tmp/vdb-guardian-pgvector-schema-plan.json --live-schema /tmp/vdb-guardian-live-pgvector-schema.json --record-mapping /tmp/vdb-guardian-record-mapping.json --output /tmp/vdb-guardian-migration-report.json --job-id migration-smoke
 go run ./cmd/vdbg seed-pgvector --fixture testdata/migration/synthetic-small.json --connection-url '[REDACTED]' --reset
 go run ./cmd/vdbg search-pgvector --fixture testdata/migration/synthetic-small.json --connection-url '[REDACTED]' --top-k 3 --expand-k 5
 go run ./cmd/vdbg build-pgvector-artifact --fixture testdata/migration/synthetic-small.json --connection-url '[REDACTED]' --output /tmp/vdb-guardian-target-fingerprint.json --top-k 3 --expand-k 5 --stable-k 2 --boundary-k 1

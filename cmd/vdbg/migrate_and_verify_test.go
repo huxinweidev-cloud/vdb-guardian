@@ -77,6 +77,23 @@ func TestParseMigrateAndVerifyOptionsParsesResetTarget(t *testing.T) {
 	}
 }
 
+func TestParseMigrateAndVerifyOptionsParsesRecordMapping(t *testing.T) {
+	options, err := parseMigrateAndVerifyOptions([]string{
+		"--fixture", "fixture.json",
+		"--milvus-address", "localhost:19530",
+		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--artifact-dir", t.TempDir(),
+		"--dimension", "8",
+		"--record-mapping", "/tmp/record-mapping.json",
+	})
+	if err != nil {
+		t.Fatalf("parseMigrateAndVerifyOptions returned error: %v", err)
+	}
+	if options.Migrate.RecordMappingPath != "/tmp/record-mapping.json" {
+		t.Fatalf("record mapping path = %q", options.Migrate.RecordMappingPath)
+	}
+}
+
 func TestParseMigrateAndVerifyOptionsParsesStrictCount(t *testing.T) {
 	options, err := parseMigrateAndVerifyOptions([]string{
 		"--fixture", "fixture.json",

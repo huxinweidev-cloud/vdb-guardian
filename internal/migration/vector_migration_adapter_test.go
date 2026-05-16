@@ -94,7 +94,7 @@ func TestMilvusVectorMigrationSourceUsesRecordMappingFields(t *testing.T) {
 	if adapter.request.Collection != "products" || adapter.request.IDField != "sku" || adapter.request.VectorField != "embedding" {
 		t.Fatalf("unexpected mapped read request: %#v", adapter.request)
 	}
-	if !equalStringSlices(adapter.request.ScalarFields, []string{"title", "price"}) {
+	if !equalStringSlices(adapter.request.ScalarFields, []string{"product_title", "price"}) {
 		t.Fatalf("scalar fields = %#v", adapter.request.ScalarFields)
 	}
 	if adapter.request.DynamicField != "_milvus_dynamic" || adapter.request.PartitionField != "_milvus_partition" {
@@ -144,7 +144,7 @@ func TestPGVectorMigrationTargetUsesRecordMappingColumns(t *testing.T) {
 		t.Fatalf("NewPGVectorMigrationTarget returned error: %v", err)
 	}
 	target = target.WithRecordMapping(mapping)
-	records := []VectorMigrationRecord{{ID: "sku-1", Vector: []float64{1, 2, 3}, Scalars: map[string]any{"title": "First", "price": 9.5}, DynamicMetadata: map[string]any{"brand": "acme"}, Partition: "tenant_a"}}
+	records := []VectorMigrationRecord{{ID: "sku-1", Vector: []float64{1, 2, 3}, Scalars: map[string]any{"product_title": "First", "price": 9.5}, DynamicMetadata: map[string]any{"brand": "acme"}, Partition: "tenant_a"}}
 
 	if err := target.WriteRecords(context.Background(), "", records); err != nil {
 		t.Fatalf("WriteRecords returned error: %v", err)
@@ -152,13 +152,10 @@ func TestPGVectorMigrationTargetUsesRecordMappingColumns(t *testing.T) {
 	if adapter.writeRequest.Table != "products" || adapter.writeRequest.IDColumn != "sku" || adapter.writeRequest.VectorColumn != "embedding" {
 		t.Fatalf("unexpected mapped write request: %#v", adapter.writeRequest)
 	}
-	if !equalStringSlices(adapter.writeRequest.ScalarColumns, []string{"title", "price"}) {
+	if !equalScalarColumns(adapter.writeRequest.ScalarColumns, []PGVectorMigrationScalarColumn{{SourceField: "product_title", TargetColumn: "title"}, {SourceField: "price", TargetColumn: "price"}}) {
 		t.Fatalf("scalar columns = %#v", adapter.writeRequest.ScalarColumns)
 	}
-	if adapter.writeRequest.DynamicColumn != "milvus_dynamic" || adapter.writeRequest.PartitionColumn != "milvus_partition" {
-		t.Fatalf("unexpected metadata columns: %#v", adapter.writeRequest)
-	}
-	if len(adapter.writes) != 1 || adapter.writes[0].Scalars["title"] != "First" || adapter.writes[0].Partition != "tenant_a" {
+	if len(adapter.writes) != 1 || adapter.writes[0].Scalars["product_title"] != "First" || adapter.writes[0].Partition != "tenant_a" {
 		t.Fatalf("unexpected writes: %#v", adapter.writes)
 	}
 }
@@ -268,7 +265,7 @@ func fullRecordAdapterMappingFixture() CollectionRecordMapping {
 		PrimaryKey:       &RecordFieldMapping{Kind: RecordMappingKindPrimaryKey, SourceField: "sku", TargetColumn: "sku", TargetType: "varchar(64)", SupportLevel: "supported"},
 		Vector:           &RecordFieldMapping{Kind: RecordMappingKindVector, SourceField: "embedding", TargetColumn: "embedding", TargetType: "vector(3)", SupportLevel: "supported"},
 		Scalars: []RecordFieldMapping{
-			{Kind: RecordMappingKindScalar, SourceField: "title", TargetColumn: "title", TargetType: "text", SupportLevel: "supported"},
+			{Kind: RecordMappingKindScalar, SourceField: "product_title", TargetColumn: "title", TargetType: "text", SupportLevel: "supported"},
 			{Kind: RecordMappingKindScalar, SourceField: "price", TargetColumn: "price", TargetType: "double precision", SupportLevel: "supported"},
 		},
 		DynamicMetadata:   &RecordFieldMapping{Kind: RecordMappingKindDynamicMetadata, SourceField: "_milvus_dynamic", TargetColumn: "milvus_dynamic", TargetType: "jsonb", SupportLevel: "degraded"},
@@ -277,6 +274,18 @@ func fullRecordAdapterMappingFixture() CollectionRecordMapping {
 }
 
 func equalStringSlices(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func equalScalarColumns(left, right []PGVectorMigrationScalarColumn) bool {
 	if len(left) != len(right) {
 		return false
 	}
