@@ -39,8 +39,11 @@ type VectorMigrationConfig struct {
 // 运行器会将记录复制到这一中性结构中，从而使后续源连接器与目标写入器的扩展
 // 无需暴露任何特定数据库的 SDK 类型。
 type VectorMigrationRecord struct {
-	ID     string
-	Vector []float64
+	ID              string
+	Vector          []float64
+	Scalars         map[string]any
+	DynamicMetadata map[string]any
+	Partition       string
 }
 
 // VectorMigrationResult summarizes one minimal migration run.
@@ -181,6 +184,47 @@ func validateVectorMigrationRecords(config VectorMigrationConfig, records []Vect
 				return fmt.Errorf("record %q vector contains non-finite value at index %d", record.ID, vectorIndex)
 			}
 		}
+		if err := validateMigrationRecordValues(record.ID, "scalar", record.Scalars); err != nil {
+			return err
+		}
+		if err := validateMigrationRecordValues(record.ID, "dynamic metadata", record.DynamicMetadata); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateMigrationRecordValues(recordID string, label string, values map[string]any) error {
+	for key, value := range values {
+		if err := validateMigrationRecordValue(recordID, label, key, value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateMigrationRecordValue(recordID string, label string, key string, value any) error {
+	switch typed := value.(type) {
+	case float32:
+		if math.IsNaN(float64(typed)) || math.IsInf(float64(typed), 0) {
+			return fmt.Errorf("record %q %s %q contains non-finite value", recordID, label, key)
+		}
+	case float64:
+		if math.IsNaN(typed) || math.IsInf(typed, 0) {
+			return fmt.Errorf("record %q %s %q contains non-finite value", recordID, label, key)
+		}
+	case []any:
+		for index, item := range typed {
+			if err := validateMigrationRecordValue(recordID, label, fmt.Sprintf("%s[%d]", key, index), item); err != nil {
+				return err
+			}
+		}
+	case map[string]any:
+		for nestedKey, item := range typed {
+			if err := validateMigrationRecordValue(recordID, label, key+"."+nestedKey, item); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -188,7 +232,45 @@ func validateVectorMigrationRecords(config VectorMigrationConfig, records []Vect
 func copyVectorMigrationRecords(records []VectorMigrationRecord) []VectorMigrationRecord {
 	copied := make([]VectorMigrationRecord, len(records))
 	for index, record := range records {
-		copied[index] = VectorMigrationRecord{ID: record.ID, Vector: append([]float64(nil), record.Vector...)}
+		copied[index] = VectorMigrationRecord{
+			ID:              record.ID,
+			Vector:          append([]float64(nil), record.Vector...),
+			Scalars:         copyMigrationValueMap(record.Scalars),
+			DynamicMetadata: copyMigrationValueMap(record.DynamicMetadata),
+			Partition:       record.Partition,
+		}
 	}
 	return copied
+}
+
+func copyMigrationValueMap(values map[string]any) map[string]any {
+	if values == nil {
+		return nil
+	}
+	copied := make(map[string]any, len(values))
+	for key, value := range values {
+		copied[key] = copyMigrationValue(value)
+	}
+	return copied
+}
+
+func copyMigrationValue(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		return copyMigrationValueMap(typed)
+	case []any:
+		copied := make([]any, len(typed))
+		for index, item := range typed {
+			copied[index] = copyMigrationValue(item)
+		}
+		return copied
+	case []string:
+		return append([]string(nil), typed...)
+	case []float64:
+		return append([]float64(nil), typed...)
+	case []int:
+		return append([]int(nil), typed...)
+	default:
+		return typed
+	}
 }

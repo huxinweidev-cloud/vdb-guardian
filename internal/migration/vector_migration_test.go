@@ -104,6 +104,58 @@ func TestVectorMigrationRunnerMigratesReadRecordsIntoWriter(t *testing.T) {
 	}
 }
 
+func TestVectorMigrationRunnerCopiesFullRecordPayloads(t *testing.T) {
+	ctx := context.Background()
+	sourceRecord := VectorMigrationRecord{
+		ID:              "vec-1",
+		Vector:          []float64{0.1, 0.2, 0.3},
+		Scalars:         map[string]any{"title": "first", "price": 12.5, "stock": int64(7), "active": true},
+		DynamicMetadata: map[string]any{"brand": "acme", "tags": []any{"alpha", "beta"}},
+		Partition:       "tenant_a",
+	}
+	source := &fakeVectorMigrationSource{records: []VectorMigrationRecord{sourceRecord}}
+	target := &fakeVectorMigrationTarget{}
+	runner, err := NewVectorMigrationRunner(VectorMigrationConfig{SourceCollection: "items", TargetTable: "items_copy", Dimension: 3}, source, target)
+	if err != nil {
+		t.Fatalf("NewVectorMigrationRunner returned error: %v", err)
+	}
+
+	_, err = runner.Migrate(ctx)
+	if err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	if len(target.records) != 1 {
+		t.Fatalf("target records length = %d, want 1", len(target.records))
+	}
+	written := target.records[0]
+	if !reflect.DeepEqual(written, sourceRecord) {
+		t.Fatalf("written record = %#v, want %#v", written, sourceRecord)
+	}
+
+	source.records[0].Vector[0] = 99
+	source.records[0].Scalars["title"] = "mutated"
+	source.records[0].DynamicMetadata["brand"] = "mutated"
+	if written.Vector[0] != 0.1 || written.Scalars["title"] != "first" || written.DynamicMetadata["brand"] != "acme" {
+		t.Fatalf("expected target full-record payload to be copied independently, got %#v", written)
+	}
+}
+
+func TestVectorMigrationRunnerRejectsNonFiniteScalarFloat(t *testing.T) {
+	target := &fakeVectorMigrationTarget{}
+	runner, err := NewVectorMigrationRunner(VectorMigrationConfig{Dimension: 3}, &fakeVectorMigrationSource{records: []VectorMigrationRecord{{ID: "vec-1", Vector: []float64{1, 2, 3}, Scalars: map[string]any{"score": math.NaN()}}}}, target)
+	if err != nil {
+		t.Fatalf("NewVectorMigrationRunner returned error: %v", err)
+	}
+
+	_, err = runner.Migrate(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "scalar \"score\" contains non-finite value") {
+		t.Fatalf("expected non-finite scalar validation error, got %v", err)
+	}
+	if len(target.records) != 0 {
+		t.Fatalf("target should not receive invalid records: %#v", target.records)
+	}
+}
+
 func TestVectorMigrationRunnerAppliesDefaults(t *testing.T) {
 	runner, err := NewVectorMigrationRunner(VectorMigrationConfig{Dimension: 8}, &fakeVectorMigrationSource{}, &fakeVectorMigrationTarget{})
 	if err != nil {
@@ -250,9 +302,6 @@ func (t *fakeVectorMigrationTarget) WriteRecords(ctx context.Context, table stri
 	if t.err != nil {
 		return t.err
 	}
-	t.records = make([]VectorMigrationRecord, len(records))
-	for index, record := range records {
-		t.records[index] = VectorMigrationRecord{ID: record.ID, Vector: append([]float64(nil), record.Vector...)}
-	}
+	t.records = copyVectorMigrationRecords(records)
 	return nil
 }
