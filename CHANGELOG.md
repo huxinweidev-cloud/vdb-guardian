@@ -39,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Local-artifact `vdbg compare-full-records` CLI for full-record equality reports across scalar fields, dynamic metadata, partition metadata, vector hashes, and vector dimensions
 - Live read-only `vdbg build-milvus-record-artifact` and `vdbg build-pgvector-record-artifact` CLI builders for producing full-record artifacts from passing mapping plans
 - `vdbg migrate-and-verify --full-record-compare` optional orchestration that builds live source/target full-record artifacts, runs full-record equality comparison, and includes the artifacts in Markdown/diagnostic reports
+- Artifact-only `vdbg reconcile-target` and explicitly confirmed `vdbg cleanup-target-stale` for auditing and deleting stale pgvector target rows after upsert-style migrations
 
 ### Changed
 

@@ -200,3 +200,11 @@ make smoke-migration-checkpoint
 ```
 
 The smoke starts/checks the disposable migration stack, seeds the committed small Milvus fixture, runs schema/mapping gates, performs a checkpointed migration, resumes via `migrate-and-verify`, verifies 100 target rows, checks `0600` report/checkpoint permissions, and scans generated artifacts for obvious secret markers. It is intentionally outside `make test` because it requires Docker and local ports; never point it at production databases.
+
+For target reconciliation and guarded stale cleanup, run:
+
+```bash
+make smoke-target-reconciliation-cleanup
+```
+
+That smoke seeds one target-only pgvector row, verifies `stale_target_count=1`, runs `cleanup-target-stale --confirm-delete-stale`, then rebuilds/reconciles target artifacts and verifies `stale_target_count=0`.

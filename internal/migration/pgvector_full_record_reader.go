@@ -157,7 +157,7 @@ func validatePGVectorFullRecordReadRequest(request PGVectorFullRecordReadRequest
 }
 
 func pgvectorFullRecordSelectSQL(request PGVectorFullRecordReadRequest) string {
-	columns := []string{request.IDColumn, request.VectorColumn}
+	columns := []string{request.IDColumn, pgvectorFullRecordTextCastExpression(request.VectorColumn)}
 	for _, scalar := range request.ScalarColumns {
 		columns = append(columns, scalar.TargetColumn)
 	}
@@ -169,9 +169,17 @@ func pgvectorFullRecordSelectSQL(request PGVectorFullRecordReadRequest) string {
 	}
 	quoted := make([]string, len(columns))
 	for index, column := range columns {
+		if strings.HasSuffix(column, "::text") {
+			quoted[index] = column
+			continue
+		}
 		quoted[index] = quotePGVectorSeedIdentifier(column)
 	}
 	return fmt.Sprintf("SELECT %s FROM %s ORDER BY %s", strings.Join(quoted, ", "), quotePGVectorSeedIdentifier(request.Table), quotePGVectorSeedIdentifier(request.IDColumn))
+}
+
+func pgvectorFullRecordTextCastExpression(column string) string {
+	return quotePGVectorSeedIdentifier(column) + "::text"
 }
 
 func scanPGVectorFullRecord(rows pgvectorFullRecordRows, request PGVectorFullRecordReadRequest) (VectorMigrationRecord, error) {

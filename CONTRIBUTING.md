@@ -204,6 +204,9 @@ make coverage-check
 # Run the opt-in local Docker checkpoint/resume smoke
 make smoke-migration-checkpoint
 
+# Run the opt-in local Docker target reconciliation/stale cleanup smoke
+make smoke-target-reconciliation-cleanup
+
 # Run Python tests with coverage
 cd python
 uv run pytest --cov=vdb_fingerprint_engine --cov-report=html

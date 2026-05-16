@@ -26,7 +26,7 @@ func TestPGVectorFullRecordReaderBuildsQuotedSelectAndMapsRows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadPGVectorFullRecords returned error: %v", err)
 	}
-	wantSQL := `SELECT "id", "embedding", "title", "metadata", "partition" FROM "items" ORDER BY "id"`
+	wantSQL := `SELECT "id", "embedding"::text, "title", "metadata", "partition" FROM "items" ORDER BY "id"`
 	if db.sql != wantSQL {
 		t.Fatalf("sql = %q, want %q", db.sql, wantSQL)
 	}

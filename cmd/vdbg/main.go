@@ -91,6 +91,20 @@ func main() {
 		}
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "reconcile-target" {
+		if err := runReconcileTargetCommand(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "reconcile-target failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "cleanup-target-stale" {
+		if err := runCleanupTargetStaleCommand(context.Background(), os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "cleanup-target-stale failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "build-milvus-record-artifact" {
 		if err := runBuildMilvusRecordArtifactCommand(context.Background(), os.Args[2:]); err != nil {
 			fmt.Fprintf(os.Stderr, "build-milvus-record-artifact failed: %v\n", err)
