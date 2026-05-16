@@ -225,8 +225,8 @@ func compareAppliedIndexes(comparison *AppliedTableComparison, plan PGVectorTabl
 }
 
 func appliedColumnTypeMatches(plannedType string, live PGVectorLiveColumnInspection) bool {
-	planned := strings.ToLower(strings.TrimSpace(plannedType))
-	liveType := strings.ToLower(strings.TrimSpace(formatLiveColumnType(live)))
+	planned := normalizeAppliedColumnType(plannedType)
+	liveType := normalizeAppliedColumnType(formatLiveColumnType(live))
 	if planned == liveType {
 		return true
 	}
@@ -235,6 +235,17 @@ func appliedColumnTypeMatches(plannedType string, live PGVectorLiveColumnInspect
 		return true
 	}
 	return false
+}
+
+func normalizeAppliedColumnType(value string) string {
+	normalized := strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(value))), " ")
+	if normalized == "" {
+		return normalized
+	}
+	if strings.HasPrefix(normalized, "character varying(") {
+		return "varchar(" + strings.TrimPrefix(normalized, "character varying(")
+	}
+	return normalized
 }
 
 func formatLiveColumnType(live PGVectorLiveColumnInspection) string {

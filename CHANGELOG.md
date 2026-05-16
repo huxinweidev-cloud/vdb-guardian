@@ -50,7 +50,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- N/A
+- Milvus `FLAT` index planning now maps to exact scan/no physical pgvector index instead of emitting unsupported `USING exact_scan` DDL
+- Applied schema comparison now treats PostgreSQL `character varying(n)` as equivalent to planned `varchar(n)`
 
 ### Security
 

@@ -59,6 +59,36 @@ func TestBuildPGVectorSchemaPlanFromInspectionPlan(t *testing.T) {
 	}
 }
 
+func TestBuildPGVectorSchemaPlanSkipsPhysicalIndexForMilvusFlatExactScan(t *testing.T) {
+	inspectionPlan := inspection.MilvusInspectionPlan{
+		SchemaVersion: inspection.MilvusInspectionSchemaVersion,
+		Collections: []inspection.MilvusCollectionPlan{
+			{
+				Name:       "items",
+				PrimaryKey: "id",
+				Fields: []inspection.MilvusFieldPlan{
+					{Name: "id", SourceType: inspection.MilvusDataTypeVarChar, TargetType: "varchar(64)", PrimaryKey: true, SupportLevel: inspection.SupportLevelSupported},
+					{Name: "embedding", SourceType: inspection.MilvusDataTypeFloatVector, TargetType: "vector(8)", Dimension: 8, SupportLevel: inspection.SupportLevelSupported},
+				},
+				Indexes: []inspection.MilvusIndexPlan{
+					{Field: "embedding", SourceIndexType: "FLAT", TargetIndexType: "flat", SupportLevel: inspection.SupportLevelSupported},
+				},
+			},
+		},
+	}
+
+	plan, err := BuildPGVectorSchemaPlan(inspectionPlan, PGVectorSchemaPlannerOptions{TargetSchema: "public"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(plan.Tables) != 1 {
+		t.Fatalf("table count: got %d", len(plan.Tables))
+	}
+	if len(plan.Tables[0].Indexes) != 0 {
+		t.Fatalf("FLAT exact-scan should not produce physical pgvector indexes: %#v", plan.Tables[0].Indexes)
+	}
+}
+
 func TestBuildPGVectorSchemaPlanRejectsUnsupportedInspectionVersion(t *testing.T) {
 	_, err := BuildPGVectorSchemaPlan(inspection.MilvusInspectionPlan{SchemaVersion: "future"}, PGVectorSchemaPlannerOptions{})
 	if err == nil || !strings.Contains(err.Error(), "unsupported inspection schema version") {

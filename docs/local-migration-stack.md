@@ -284,6 +284,77 @@ go run ./cmd/vdbg migrate-and-verify \
 
 For the committed small fixture and compatible source/target search behavior, the command should print `records_read: 100`, `records_written: 100`, and `matched_queries: 10`. It also writes `<artifact-dir>/<job-id>-diagnostic-report.json` with machine-readable migration counts, fingerprint metrics, artifact paths, safety flags, and quality gate status.
 
+## Real schema-gated Milvus-to-pgvector E2E smoke
+
+For the schema-gated real-service path, run the chain below after the stack is healthy and Milvus has been seeded. It uses only local Docker services and the committed small fixture:
+
+```bash
+export VDB_GUARDIAN_LOCAL_PG_URL='[REDACTED]'
+
+go run ./cmd/vdbg inspect-milvus \
+  --milvus-address localhost:19530 \
+  --collection items \
+  --output /tmp/vdb-guardian-milvus-plan.json
+
+go run ./cmd/vdbg plan-pgvector-schema \
+  --inspection-plan /tmp/vdb-guardian-milvus-plan.json \
+  --output /tmp/vdb-guardian-pgvector-schema-plan.json
+
+go run ./cmd/vdbg compare-schema-plans \
+  --inspection-plan /tmp/vdb-guardian-milvus-plan.json \
+  --schema-plan /tmp/vdb-guardian-pgvector-schema-plan.json \
+  --output /tmp/vdb-guardian-schema-compare-report.json
+
+go run ./cmd/vdbg apply-pgvector-schema \
+  --schema-plan /tmp/vdb-guardian-pgvector-schema-plan.json \
+  --artifact-dir /tmp/vdb-guardian-schema-apply \
+  --job-id schema-apply-smoke \
+  --pgvector-connection-url "$VDB_GUARDIAN_LOCAL_PG_URL" \
+  --execute
+
+go run ./cmd/vdbg inspect-pgvector-schema \
+  --pgvector-connection-url "$VDB_GUARDIAN_LOCAL_PG_URL" \
+  --target-schema public \
+  --output /tmp/vdb-guardian-live-pgvector-schema.json
+
+go run ./cmd/vdbg compare-applied-schema \
+  --schema-plan /tmp/vdb-guardian-pgvector-schema-plan.json \
+  --live-schema /tmp/vdb-guardian-live-pgvector-schema.json \
+  --output /tmp/vdb-guardian-applied-schema-compare-report.json
+
+go run ./cmd/vdbg map-migration-records \
+  --schema-plan /tmp/vdb-guardian-pgvector-schema-plan.json \
+  --output /tmp/vdb-guardian-record-mapping.json
+
+go run ./cmd/vdbg migrate \
+  --milvus-address localhost:19530 \
+  --source-collection items \
+  --milvus-id-field id \
+  --milvus-vector-field embedding \
+  --pgvector-connection-url "$VDB_GUARDIAN_LOCAL_PG_URL" \
+  --target-table items \
+  --pgvector-id-column id \
+  --pgvector-vector-column embedding \
+  --dimension 8 \
+  --batch-size 100 \
+  --require-schema-match \
+  --schema-plan /tmp/vdb-guardian-pgvector-schema-plan.json \
+  --live-schema /tmp/vdb-guardian-live-pgvector-schema.json \
+  --output /tmp/vdb-guardian-migration-report.json \
+  --job-id migration-smoke
+```
+
+Expected small-fixture success markers:
+
+- `compare-schema-plans` status `pass`.
+- `apply-pgvector-schema` succeeds without creating an `exact_scan` index for Milvus `FLAT`; `FLAT` means exact scan/no physical pgvector index.
+- `compare-applied-schema` has `mismatch_count: 0`; extra live primary-key backing indexes may remain warnings.
+- `map-migration-records` status `pass` and output permission `0600`.
+- `migrate` reports `records_read: 100`, `records_written: 100`, and output permission `0600`.
+- Target row count is `100` and `vector_dims(embedding)` is `8`.
+
+If default ports are occupied, override Compose ports before startup, for example `VDB_GUARDIAN_POSTGRES_PORT=15432` and `VDB_GUARDIAN_MILVUS_PORT=19531`, then use those same ports in every command.
+
 ## Source/target artifact comparison check
 
 If source and target fingerprint artifacts already exist, compare them directly through the Python engine:

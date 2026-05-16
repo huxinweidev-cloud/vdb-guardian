@@ -71,6 +71,36 @@ func TestMilvusInspectorBuildsPlanFromMetadataClient(t *testing.T) {
 	}
 }
 
+func TestMilvusInspectorTreatsFlatIndexAsExactScanWithoutPhysicalPGVectorIndex(t *testing.T) {
+	client := &fakeMilvusMetadataClient{
+		collections: []string{"items"},
+		metadata: map[string]MilvusCollectionMetadata{
+			"items": {
+				Name:       "items",
+				PrimaryKey: "id",
+				Fields: []MilvusFieldMetadata{
+					{Name: "id", DataType: MilvusDataTypeVarChar, PrimaryKey: true, MaxLength: 64},
+					{Name: "embedding", DataType: MilvusDataTypeFloatVector, Dimension: 8},
+				},
+				Indexes: []MilvusIndexMetadata{{Field: "embedding", IndexType: "FLAT", MetricType: "COSINE"}},
+			},
+		},
+	}
+
+	plan, err := NewMilvusInspector(client, MilvusInspectorOptions{Address: "localhost:19530"}).Inspect(context.Background())
+	if err != nil {
+		t.Fatalf("inspect failed: %v", err)
+	}
+	items := findCollectionPlan(t, plan.Collections, "items")
+	if len(items.Indexes) != 1 {
+		t.Fatalf("indexes = %d, want 1", len(items.Indexes))
+	}
+	flat := items.Indexes[0]
+	if flat.TargetIndexType != "flat" || flat.TargetOps != "" || flat.SupportLevel != SupportLevelSupported || flat.Warning != "" {
+		t.Fatalf("FLAT should be modeled as exact-scan/no physical index, got %#v", flat)
+	}
+}
+
 func TestMilvusInspectorCanInspectSingleCollection(t *testing.T) {
 	client := &fakeMilvusMetadataClient{
 		collections: []string{"items", "events"},

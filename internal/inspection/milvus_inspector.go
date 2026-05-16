@@ -171,7 +171,7 @@ func buildMilvusIndexPlans(indexes []MilvusIndexMetadata) []MilvusIndexPlan {
 		}
 		switch strings.ToUpper(index.IndexType) {
 		case "FLAT":
-			plan.TargetIndexType = "exact_scan"
+			plan.TargetIndexType = "flat"
 			plan.SupportLevel = SupportLevelSupported
 		case "HNSW":
 			plan.TargetIndexType = "hnsw"
@@ -183,7 +183,7 @@ func buildMilvusIndexPlans(indexes []MilvusIndexMetadata) []MilvusIndexPlan {
 			plan.SupportLevel = SupportLevelUnsupported
 			plan.Warning = fmt.Sprintf("Milvus index type %q is metadata-only in phase one", index.IndexType)
 		}
-		if plan.TargetOps == "" && plan.Warning == "" && plan.TargetIndexType != "exact_scan" {
+		if plan.TargetOps == "" && plan.Warning == "" && plan.TargetIndexType != "flat" {
 			plan.Warning = fmt.Sprintf("Milvus metric %q needs manual pgvector operator review", index.MetricType)
 		}
 		plans = append(plans, plan)

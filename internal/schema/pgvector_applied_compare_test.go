@@ -54,6 +54,21 @@ func TestCompareAppliedPGVectorSchemaFailsWhenColumnMissing(t *testing.T) {
 	assertAppliedMismatch(t, report, "column_present")
 }
 
+func TestCompareAppliedPGVectorSchemaNormalizesEquivalentVarcharAlias(t *testing.T) {
+	plan := appliedCompareSchemaPlanFixture()
+	plan.Tables[0].Columns[0].TargetType = "varchar(256)"
+	live := appliedCompareLiveSchemaFixture()
+	live.Tables[0].Columns[0].Type = "character varying(256)"
+	live.Tables[0].Columns[0].FormattedType = "character varying(256)"
+
+	report, err := CompareAppliedPGVectorSchema(plan, live, AppliedSchemaCompareOptions{})
+	assertNoCompareError(t, err)
+	if report.Status != SchemaPlanCompareStatusPass {
+		t.Fatalf("expected equivalent varchar alias to pass, got %#v", report)
+	}
+	assertAppliedCheck(t, report.Tables[0].Checks, "column_type_matches")
+}
+
 func TestCompareAppliedPGVectorSchemaFailsWhenColumnTypeDiffers(t *testing.T) {
 	plan := appliedCompareSchemaPlanFixture()
 	live := appliedCompareLiveSchemaFixture()
