@@ -28,6 +28,7 @@ type VectorMigrationConfig struct {
 	TargetTable              string
 	Dimension                int
 	BatchSize                int
+	WriteModeRequested       string
 	CheckpointPath           string
 	ResumeFromPath           string
 	JobID                    string
@@ -64,11 +65,29 @@ type VectorMigrationRecord struct {
 // 该结果专为 CLI 与作业报告而设计，以便调用方能够确认使用了哪一个源集合与目标表，
 // 以及实际转移了多少条记录。
 type VectorMigrationResult struct {
-	SourceCollection string
-	TargetTable      string
-	Dimension        int
-	RecordsRead      int
-	RecordsWritten   int
+	SourceCollection   string
+	TargetTable        string
+	Dimension          int
+	RecordsRead        int
+	RecordsWritten     int
+	WriteModeRequested string
+	WriteModeUsed      string
+	CopyBatches        int
+	BatchUpsertBatches int
+	CopyFallbacks      int
+}
+
+// VectorMigrationWriteResult summarizes the target write mode used for one successfully written batch.
+//
+// Target adapters return this optional result when they can report whether a
+// batch used COPY, batch upsert, or fell back from COPY to batch upsert. The
+// migration runner aggregates these counters only after the batch write has
+// succeeded so checkpoint failure behavior remains unchanged.
+type VectorMigrationWriteResult struct {
+	WriteModeUsed      string
+	CopyBatches        int
+	BatchUpsertBatches int
+	CopyFallbacks      int
 }
 
 type vectorMigrationSource interface {
@@ -77,6 +96,10 @@ type vectorMigrationSource interface {
 
 type vectorMigrationTarget interface {
 	WriteRecords(ctx context.Context, table string, records []VectorMigrationRecord) error
+}
+
+type vectorMigrationTargetWithResult interface {
+	WriteRecordsWithResult(ctx context.Context, table string, records []VectorMigrationRecord) (VectorMigrationWriteResult, error)
 }
 
 type vectorMigrationCheckpointStore interface {
@@ -162,6 +185,7 @@ func (r VectorMigrationRunner) Migrate(ctx context.Context) (VectorMigrationResu
 		return VectorMigrationResult{}, err
 	}
 	resumeOffset, completedBatches, recordsWritten := r.resumeState()
+	writeStats := VectorMigrationWriteResult{}
 	if resumeOffset > len(records) {
 		return VectorMigrationResult{}, fmt.Errorf("resume offset %d exceeds source record count %d", resumeOffset, len(records))
 	}
@@ -172,7 +196,8 @@ func (r VectorMigrationRunner) Migrate(ctx context.Context) (VectorMigrationResu
 		}
 		batchIndex := start / r.config.BatchSize
 		copied := copyVectorMigrationRecords(records[start:end])
-		if err := r.target.WriteRecords(ctx, r.config.TargetTable, copied); err != nil {
+		writeResult, err := r.writeTargetRecords(ctx, copied)
+		if err != nil {
 			failed := VectorMigrationCheckpointBatch{Index: batchIndex, Start: start, End: end, Error: SanitizeVectorMigrationCheckpointError(err)}
 			checkpoint := r.buildCheckpoint(VectorMigrationCheckpointStatusFailed, len(records), recordsWritten, completedBatches, []VectorMigrationCheckpointBatch{failed}, batchIndex, start)
 			if saveErr := r.checkpointStore.Save(ctx, checkpoint); saveErr != nil {
@@ -180,6 +205,7 @@ func (r VectorMigrationRunner) Migrate(ctx context.Context) (VectorMigrationResu
 			}
 			return VectorMigrationResult{}, fmt.Errorf("write target records: %w", err)
 		}
+		writeStats.add(writeResult)
 		recordsWritten += len(copied)
 		completedBatches = append(completedBatches, VectorMigrationCheckpointBatch{Index: batchIndex, Start: start, End: end, RecordsWritten: len(copied)})
 		checkpoint := r.buildCheckpoint(VectorMigrationCheckpointStatusRunning, len(records), recordsWritten, completedBatches, nil, batchIndex+1, end)
@@ -192,12 +218,53 @@ func (r VectorMigrationRunner) Migrate(ctx context.Context) (VectorMigrationResu
 		return VectorMigrationResult{}, fmt.Errorf("write completed checkpoint: %w", err)
 	}
 	return VectorMigrationResult{
-		SourceCollection: r.config.SourceCollection,
-		TargetTable:      r.config.TargetTable,
-		Dimension:        r.config.Dimension,
-		RecordsRead:      len(records),
-		RecordsWritten:   recordsWritten - r.resumeWrittenCount(),
+		SourceCollection:   r.config.SourceCollection,
+		TargetTable:        r.config.TargetTable,
+		Dimension:          r.config.Dimension,
+		RecordsRead:        len(records),
+		RecordsWritten:     recordsWritten - r.resumeWrittenCount(),
+		WriteModeRequested: r.config.WriteModeRequested,
+		WriteModeUsed:      writeStats.WriteModeUsed,
+		CopyBatches:        writeStats.CopyBatches,
+		BatchUpsertBatches: writeStats.BatchUpsertBatches,
+		CopyFallbacks:      writeStats.CopyFallbacks,
 	}, nil
+}
+
+func (r VectorMigrationRunner) writeTargetRecords(ctx context.Context, records []VectorMigrationRecord) (VectorMigrationWriteResult, error) {
+	if targetWithResult, ok := r.target.(vectorMigrationTargetWithResult); ok {
+		return targetWithResult.WriteRecordsWithResult(ctx, r.config.TargetTable, records)
+	}
+	if err := r.target.WriteRecords(ctx, r.config.TargetTable, records); err != nil {
+		return VectorMigrationWriteResult{}, err
+	}
+	return VectorMigrationWriteResult{WriteModeUsed: string(PGVectorMigrationWriteModeBatchUpsert), BatchUpsertBatches: 1}, nil
+}
+
+func (r *VectorMigrationWriteResult) add(batch VectorMigrationWriteResult) {
+	r.CopyBatches += batch.CopyBatches
+	r.BatchUpsertBatches += batch.BatchUpsertBatches
+	r.CopyFallbacks += batch.CopyFallbacks
+	r.WriteModeUsed = aggregateVectorMigrationWriteModeUsed(r.WriteModeUsed, batch.WriteModeUsed, r.CopyBatches, r.BatchUpsertBatches)
+}
+
+func aggregateVectorMigrationWriteModeUsed(current string, batch string, copyBatches int, batchUpsertBatches int) string {
+	if copyBatches > 0 && batchUpsertBatches > 0 {
+		return "mixed"
+	}
+	if copyBatches > 0 {
+		return string(PGVectorMigrationWriteModeCopy)
+	}
+	if batchUpsertBatches > 0 {
+		return string(PGVectorMigrationWriteModeBatchUpsert)
+	}
+	if batch == "" {
+		return current
+	}
+	if current == "" || current == batch {
+		return batch
+	}
+	return "mixed"
 }
 
 func (r VectorMigrationRunner) resumeState() (int, []VectorMigrationCheckpointBatch, int) {
@@ -248,6 +315,9 @@ func applyVectorMigrationDefaults(config VectorMigrationConfig) VectorMigrationC
 	}
 	if config.BatchSize == 0 {
 		config.BatchSize = 100
+	}
+	if config.WriteModeRequested == "" {
+		config.WriteModeRequested = string(PGVectorMigrationWriteModeBatchUpsert)
 	}
 	return config
 }

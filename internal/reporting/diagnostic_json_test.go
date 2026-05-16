@@ -27,11 +27,16 @@ func TestRenderMigrateAndVerifyDiagnosticJSONIncludesMachineReadableRunContext(t
 			CheckpointPath:           "/tmp/run/mv-smoke-checkpoint.json",
 			ResumeFromPath:           "/tmp/run/mv-smoke-checkpoint.json",
 			Migration: migration.VectorMigrationResult{
-				SourceCollection: "items",
-				TargetTable:      "items",
-				Dimension:        8,
-				RecordsRead:      100,
-				RecordsWritten:   100,
+				SourceCollection:   "items",
+				TargetTable:        "items",
+				Dimension:          8,
+				RecordsRead:        100,
+				RecordsWritten:     100,
+				WriteModeRequested: "auto",
+				WriteModeUsed:      "mixed",
+				CopyBatches:        2,
+				BatchUpsertBatches: 3,
+				CopyFallbacks:      1,
 			},
 			Output: engine.CompareOutput{
 				ConsistencyScore: 0.9995,
@@ -58,11 +63,16 @@ func TestRenderMigrateAndVerifyDiagnosticJSONIncludesMachineReadableRunContext(t
 		JobID         string `json:"job_id"`
 		State         string `json:"state"`
 		Migration     struct {
-			SourceCollection string `json:"source_collection"`
-			TargetTable      string `json:"target_table"`
-			Dimension        int    `json:"dimension"`
-			RecordsRead      int    `json:"records_read"`
-			RecordsWritten   int    `json:"records_written"`
+			SourceCollection   string `json:"source_collection"`
+			TargetTable        string `json:"target_table"`
+			Dimension          int    `json:"dimension"`
+			RecordsRead        int    `json:"records_read"`
+			RecordsWritten     int    `json:"records_written"`
+			WriteModeRequested string `json:"write_mode_requested"`
+			WriteModeUsed      string `json:"write_mode_used"`
+			CopyBatches        int    `json:"copy_batches"`
+			BatchUpsertBatches int    `json:"batch_upsert_batches"`
+			CopyFallbacks      int    `json:"copy_fallbacks"`
 		} `json:"migration"`
 		Verification struct {
 			ConsistencyScore float64 `json:"consistency_score"`
@@ -112,6 +122,12 @@ func TestRenderMigrateAndVerifyDiagnosticJSONIncludesMachineReadableRunContext(t
 	}
 	if got.Migration.RecordsRead != 100 || got.Migration.RecordsWritten != 100 {
 		t.Fatalf("unexpected migration counts: %+v", got.Migration)
+	}
+	if got.Migration.WriteModeRequested != "auto" || got.Migration.WriteModeUsed != "mixed" {
+		t.Fatalf("unexpected migration write modes: %+v", got.Migration)
+	}
+	if got.Migration.CopyBatches != 2 || got.Migration.BatchUpsertBatches != 3 || got.Migration.CopyFallbacks != 1 {
+		t.Fatalf("unexpected migration write-mode counters: %+v", got.Migration)
 	}
 	if got.Verification.ConsistencyScore != 0.9995 || got.Verification.Metrics.FingerprintDistance != 0.0005 {
 		t.Fatalf("unexpected verification metrics: %+v", got.Verification)

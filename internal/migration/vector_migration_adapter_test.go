@@ -136,6 +136,22 @@ func TestPGVectorMigrationTargetWriteRecordsUsesAdapter(t *testing.T) {
 	}
 }
 
+func TestPGVectorMigrationTargetWriteRecordsWithCopyModeRejectsWriterWithoutCopySupport(t *testing.T) {
+	adapter := &fakePGVectorMigrationRecordWriter{}
+	target, err := NewPGVectorMigrationTarget(connectors.PGVectorConfig{ConnectionURL: "postgres://example", DefaultTable: "items", IDColumn: "id", VectorColumn: "embedding", WriteMode: string(PGVectorMigrationWriteModeCopy)}, adapter)
+	if err != nil {
+		t.Fatalf("NewPGVectorMigrationTarget returned error: %v", err)
+	}
+
+	result, err := target.WriteRecordsWithResult(context.Background(), "items", []VectorMigrationRecord{{ID: "vec-1", Vector: []float64{1, 2, 3}}})
+	if err == nil || !strings.Contains(err.Error(), "does not support pgvector copy migration write mode") {
+		t.Fatalf("expected clear copy support error, got result %#v error %v", result, err)
+	}
+	if len(adapter.writes) != 0 {
+		t.Fatalf("copy mode should not fall back to batch upsert, got writes %#v", adapter.writes)
+	}
+}
+
 func TestPGVectorMigrationTargetUsesRecordMappingColumns(t *testing.T) {
 	adapter := &fakePGVectorMigrationRecordWriter{}
 	mapping := fullRecordAdapterMappingFixture()

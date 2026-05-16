@@ -40,9 +40,14 @@ type VectorMigrationReportPreflight struct {
 }
 
 type VectorMigrationReportSummary struct {
-	Dimension      int `json:"dimension"`
-	RecordsRead    int `json:"records_read"`
-	RecordsWritten int `json:"records_written"`
+	Dimension          int    `json:"dimension"`
+	RecordsRead        int    `json:"records_read"`
+	RecordsWritten     int    `json:"records_written"`
+	WriteModeRequested string `json:"write_mode_requested,omitempty"`
+	WriteModeUsed      string `json:"write_mode_used,omitempty"`
+	CopyBatches        int    `json:"copy_batches"`
+	BatchUpsertBatches int    `json:"batch_upsert_batches"`
+	CopyFallbacks      int    `json:"copy_fallbacks"`
 }
 
 type VectorMigrationReportMapping struct {
@@ -87,9 +92,14 @@ func BuildVectorMigrationReport(result VectorMigrationResult, options VectorMigr
 		Mapping:    options.Mapping,
 		Checkpoint: options.Checkpoint,
 		Summary: VectorMigrationReportSummary{
-			Dimension:      result.Dimension,
-			RecordsRead:    result.RecordsRead,
-			RecordsWritten: result.RecordsWritten,
+			Dimension:          result.Dimension,
+			RecordsRead:        result.RecordsRead,
+			RecordsWritten:     result.RecordsWritten,
+			WriteModeRequested: result.WriteModeRequested,
+			WriteModeUsed:      result.WriteModeUsed,
+			CopyBatches:        result.CopyBatches,
+			BatchUpsertBatches: result.BatchUpsertBatches,
+			CopyFallbacks:      result.CopyFallbacks,
 		},
 	}
 }

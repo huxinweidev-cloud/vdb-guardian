@@ -49,6 +49,7 @@ type PGVectorConfig struct {
 	DefaultTable  string
 	IDColumn      string
 	VectorColumn  string
+	WriteMode     string
 	Metric        string
 }
 

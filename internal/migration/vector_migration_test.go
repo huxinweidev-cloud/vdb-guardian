@@ -2,6 +2,7 @@ package migration
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"math"
 	"reflect"
@@ -61,6 +62,60 @@ func TestBuildVectorMigrationReport(t *testing.T) {
 	}
 	if report.Checkpoint == nil || report.Checkpoint.Path != "/tmp/checkpoint.json" || report.Checkpoint.ResumeFrom != "/tmp/checkpoint.json" || report.Checkpoint.CompletedBatches != 3 || report.Checkpoint.NextRecordOffset != 300 {
 		t.Fatalf("unexpected checkpoint summary: %+v", report.Checkpoint)
+	}
+}
+
+func TestBuildVectorMigrationReportIncludesWriteModeMetrics(t *testing.T) {
+	report := BuildVectorMigrationReport(VectorMigrationResult{
+		WriteModeRequested: "auto",
+		WriteModeUsed:      "batch-upsert",
+		CopyBatches:        1,
+		BatchUpsertBatches: 1,
+		CopyFallbacks:      1,
+	}, VectorMigrationReportOptions{})
+
+	data, err := json.Marshal(report)
+	if err != nil {
+		t.Fatalf("marshal report: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("unmarshal report map: %v", err)
+	}
+	summary, ok := decoded["summary"].(map[string]any)
+	if !ok {
+		t.Fatalf("summary missing or wrong type in %s", string(data))
+	}
+
+	assertJSONField(t, summary, "write_mode_requested", "auto")
+	assertJSONField(t, summary, "write_mode_used", "batch-upsert")
+	assertJSONField(t, summary, "copy_batches", float64(1))
+	assertJSONField(t, summary, "batch_upsert_batches", float64(1))
+	assertJSONField(t, summary, "copy_fallbacks", float64(1))
+	assertJSONFieldAbsent(t, decoded, "connection_url")
+	assertJSONFieldAbsent(t, decoded, "pgvector_connection_url")
+	assertJSONFieldAbsent(t, decoded, "source_connection_url")
+	assertJSONFieldAbsent(t, decoded, "target_connection_url")
+	if strings.Contains(string(data), "postgres://") || strings.Contains(string(data), "postgresql://") {
+		t.Fatalf("report JSON appears to contain a connection URL: %s", string(data))
+	}
+}
+
+func assertJSONField(t *testing.T, fields map[string]any, name string, want any) {
+	t.Helper()
+	got, ok := fields[name]
+	if !ok {
+		t.Fatalf("JSON field %q missing in %#v", name, fields)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("JSON field %q = %#v, want %#v", name, got, want)
+	}
+}
+
+func assertJSONFieldAbsent(t *testing.T, fields map[string]any, name string) {
+	t.Helper()
+	if _, ok := fields[name]; ok {
+		t.Fatalf("JSON field %q must not be present in %#v", name, fields)
 	}
 }
 
@@ -213,6 +268,63 @@ func TestVectorMigrationRunnerWritesFailedCheckpointBeforeReturningWriteError(t 
 	}
 	if failed.Resume.NextRecordOffset != 2 || failed.FailedBatches[0].Start != 2 || failed.FailedBatches[0].End != 3 {
 		t.Fatalf("unexpected failed checkpoint offsets: %+v", failed)
+	}
+}
+
+func TestVectorMigrationRunnerAggregatesWriteStats(t *testing.T) {
+	source := &fakeVectorMigrationSource{records: []VectorMigrationRecord{
+		{ID: "vec-1", Vector: []float64{1, 1, 1}},
+		{ID: "vec-2", Vector: []float64{2, 2, 2}},
+		{ID: "vec-3", Vector: []float64{3, 3, 3}},
+		{ID: "vec-4", Vector: []float64{4, 4, 4}},
+	}}
+	target := &fakeStatsMigrationTarget{
+		results: []VectorMigrationWriteResult{
+			{WriteModeUsed: "copy", CopyBatches: 1},
+			{WriteModeUsed: "batch-upsert", BatchUpsertBatches: 1, CopyFallbacks: 1},
+		},
+	}
+	runner, err := NewVectorMigrationRunner(VectorMigrationConfig{SourceCollection: "items", TargetTable: "items_copy", Dimension: 3, BatchSize: 2}, source, target)
+	if err != nil {
+		t.Fatalf("NewVectorMigrationRunner returned error: %v", err)
+	}
+
+	result, err := runner.Migrate(context.Background())
+	if err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+
+	if result.WriteModeUsed != "mixed" {
+		t.Fatalf("write mode used = %q, want mixed", result.WriteModeUsed)
+	}
+	if result.CopyBatches != 1 || result.BatchUpsertBatches != 1 || result.CopyFallbacks != 1 {
+		t.Fatalf("write stats = copy %d batch-upsert %d fallbacks %d, want 1/1/1", result.CopyBatches, result.BatchUpsertBatches, result.CopyFallbacks)
+	}
+}
+
+func TestVectorMigrationWriteResultAddPreservesSingleAndEmptyWriteModes(t *testing.T) {
+	cases := []struct {
+		name    string
+		batches []VectorMigrationWriteResult
+		want    string
+	}{
+		{name: "empty", want: ""},
+		{name: "copy only", batches: []VectorMigrationWriteResult{{WriteModeUsed: "copy", CopyBatches: 1}, {WriteModeUsed: "copy", CopyBatches: 1}}, want: "copy"},
+		{name: "batch upsert only", batches: []VectorMigrationWriteResult{{WriteModeUsed: "batch-upsert", BatchUpsertBatches: 1}, {WriteModeUsed: "batch-upsert", BatchUpsertBatches: 1}}, want: "batch-upsert"},
+		{name: "mixed by counters", batches: []VectorMigrationWriteResult{{WriteModeUsed: "copy", CopyBatches: 1}, {WriteModeUsed: "batch-upsert", BatchUpsertBatches: 1}}, want: "mixed"},
+		{name: "mixed by reported modes", batches: []VectorMigrationWriteResult{{WriteModeUsed: "copy"}, {WriteModeUsed: "batch-upsert"}}, want: "mixed"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var stats VectorMigrationWriteResult
+			for _, batch := range tc.batches {
+				stats.add(batch)
+			}
+			if stats.WriteModeUsed != tc.want {
+				t.Fatalf("write mode used = %q, want %q", stats.WriteModeUsed, tc.want)
+			}
+		})
 	}
 }
 
@@ -421,6 +533,35 @@ func (t *fakeVectorMigrationTarget) WriteRecords(ctx context.Context, table stri
 	t.writeBatches = append(t.writeBatches, copied)
 	t.records = append(t.records, copied...)
 	return nil
+}
+
+type fakeStatsMigrationTarget struct {
+	table        string
+	records      []VectorMigrationRecord
+	writeBatches [][]VectorMigrationRecord
+	results      []VectorMigrationWriteResult
+	calls        int
+}
+
+func (t *fakeStatsMigrationTarget) WriteRecords(ctx context.Context, table string, records []VectorMigrationRecord) error {
+	_, err := t.WriteRecordsWithResult(ctx, table, records)
+	return err
+}
+
+func (t *fakeStatsMigrationTarget) WriteRecordsWithResult(ctx context.Context, table string, records []VectorMigrationRecord) (VectorMigrationWriteResult, error) {
+	if err := ctx.Err(); err != nil {
+		return VectorMigrationWriteResult{}, err
+	}
+	t.table = table
+	if t.calls >= len(t.results) {
+		return VectorMigrationWriteResult{}, errors.New("missing fake write result")
+	}
+	result := t.results[t.calls]
+	t.calls++
+	copied := copyVectorMigrationRecords(records)
+	t.writeBatches = append(t.writeBatches, copied)
+	t.records = append(t.records, copied...)
+	return result, nil
 }
 
 type fakeVectorMigrationCheckpointStore struct {

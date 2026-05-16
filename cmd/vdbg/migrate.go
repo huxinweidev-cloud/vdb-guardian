@@ -112,6 +112,7 @@ func parseMigrateOptions(args []string) (migrateOptions, error) {
 	var targetTable string
 	var pgvectorIDColumn string
 	var pgvectorVectorColumn string
+	var pgvectorWriteMode string
 	var dimension int
 	var schemaPlanPath string
 	var liveSchemaPath string
@@ -130,6 +131,7 @@ func parseMigrateOptions(args []string) (migrateOptions, error) {
 	flagSet.StringVar(&targetTable, "target-table", "items", "pgvector target table")
 	flagSet.StringVar(&pgvectorIDColumn, "pgvector-id-column", "id", "pgvector ID column")
 	flagSet.StringVar(&pgvectorVectorColumn, "pgvector-vector-column", "embedding", "pgvector vector column")
+	flagSet.StringVar(&pgvectorWriteMode, "pgvector-write-mode", "batch-upsert", "pgvector write mode: batch-upsert, copy, or auto")
 	flagSet.IntVar(&dimension, "dimension", 0, "vector dimension to validate during migration")
 	flagSet.IntVar(&batchSize, "batch-size", 100, "migration batch size")
 	flagSet.BoolVar(&requireSchemaMatch, "require-schema-match", false, "require planned-vs-live schema match before migration")
@@ -155,6 +157,9 @@ func parseMigrateOptions(args []string) (migrateOptions, error) {
 	if batchSize <= 0 {
 		return migrateOptions{}, errors.New("batch-size must be positive")
 	}
+	if err := validatePGVectorWriteModeFlag(pgvectorWriteMode); err != nil {
+		return migrateOptions{}, err
+	}
 	if jobID == "" {
 		jobID = "migration"
 	}
@@ -179,17 +184,19 @@ func parseMigrateOptions(args []string) (migrateOptions, error) {
 			DefaultTable:  targetTable,
 			IDColumn:      pgvectorIDColumn,
 			VectorColumn:  pgvectorVectorColumn,
+			WriteMode:     pgvectorWriteMode,
 		},
 		MigrationConfig: migration.VectorMigrationConfig{
-			SourceCollection:  sourceCollection,
-			TargetTable:       targetTable,
-			Dimension:         dimension,
-			BatchSize:         batchSize,
-			CheckpointPath:    checkpointPath,
-			ResumeFromPath:    resumeFromPath,
-			JobID:             jobID,
-			SchemaPlanPath:    schemaPlanPath,
-			RecordMappingPath: recordMappingPath,
+			SourceCollection:   sourceCollection,
+			TargetTable:        targetTable,
+			Dimension:          dimension,
+			BatchSize:          batchSize,
+			WriteModeRequested: pgvectorWriteMode,
+			CheckpointPath:     checkpointPath,
+			ResumeFromPath:     resumeFromPath,
+			JobID:              jobID,
+			SchemaPlanPath:     schemaPlanPath,
+			RecordMappingPath:  recordMappingPath,
 		},
 		RequireSchemaMatch: requireSchemaMatch,
 		SchemaPlanPath:     schemaPlanPath,
@@ -200,6 +207,15 @@ func parseMigrateOptions(args []string) (migrateOptions, error) {
 		OutputPath:         outputPath,
 		JobID:              jobID,
 	}, nil
+}
+
+func validatePGVectorWriteModeFlag(mode string) error {
+	switch mode {
+	case "batch-upsert", "copy", "auto":
+		return nil
+	default:
+		return fmt.Errorf("pgvector-write-mode must be one of batch-upsert, copy, or auto")
+	}
 }
 
 func runMigrateSchemaPreflight(options migrateOptions) error {

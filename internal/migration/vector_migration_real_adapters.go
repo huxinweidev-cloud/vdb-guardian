@@ -371,12 +371,24 @@ type pgvectorMigrationDB interface {
 	Exec(ctx context.Context, sql string, args ...any) error
 }
 
+type pgvectorMigrationCopyDB interface {
+	Begin(ctx context.Context) (pgvectorMigrationCopyTx, error)
+}
+
+type pgvectorMigrationCopyTx interface {
+	Exec(ctx context.Context, sql string, args ...any) error
+	CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error)
+	Commit(ctx context.Context) error
+	Rollback(ctx context.Context) error
+}
+
 // pgxPGVectorMigrationWriter is a real pgx-backed pgvector migration target writer.
 //
 // pgxPGVectorMigrationWriter 是一个使用 pgx 驱动的真实 pgvector 迁移目标端写入器。
 type pgxPGVectorMigrationWriter struct {
 	connectionURL string
 	db            pgvectorMigrationDB
+	copyDB        pgvectorMigrationCopyDB
 }
 
 func newPGXPGVectorMigrationWriter(connectionURL string) *pgxPGVectorMigrationWriter {
@@ -385,6 +397,10 @@ func newPGXPGVectorMigrationWriter(connectionURL string) *pgxPGVectorMigrationWr
 
 func newPGXPGVectorMigrationWriterWithDB(db pgvectorMigrationDB) *pgxPGVectorMigrationWriter {
 	return &pgxPGVectorMigrationWriter{db: db}
+}
+
+func newPGXPGVectorMigrationWriterWithCopyDB(db pgvectorMigrationCopyDB) *pgxPGVectorMigrationWriter {
+	return &pgxPGVectorMigrationWriter{copyDB: db}
 }
 
 // WritePGVectorMigrationRecords performs an upsert of the normalized records into the target pgvector table.
@@ -415,6 +431,63 @@ func (w *pgxPGVectorMigrationWriter) WritePGVectorMigrationRecordsWithMapping(ct
 	return nil
 }
 
+// WritePGVectorMigrationRecordsWithMappingCopy performs a mapped full-record COPY through a staging table.
+//
+// It exposes the internal COPY seam on the real writer so future migration target
+// routing can select it explicitly while current production routing remains on
+// WritePGVectorMigrationRecordsWithMapping.
+func (w *pgxPGVectorMigrationWriter) WritePGVectorMigrationRecordsWithMappingCopy(ctx context.Context, request PGVectorMigrationWriteRequest) error {
+	return w.copyPGVectorMigrationRecords(ctx, request)
+}
+
+func (w *pgxPGVectorMigrationWriter) copyPGVectorMigrationRecords(ctx context.Context, request PGVectorMigrationWriteRequest) error {
+	if err := validateMigrationWriteRequest(request); err != nil {
+		return err
+	}
+	if len(request.Records) == 0 {
+		return nil
+	}
+	stagingTable := pgvectorMigrationStagingTableName(request.Table)
+	if err := validateMigrationAdapterIdentifier("pgvector staging table", stagingTable); err != nil {
+		return err
+	}
+	columns := pgvectorMigrationWriteColumns(request)
+	rows, err := pgvectorMigrationCopyRows(request)
+	if err != nil {
+		return err
+	}
+	copyDB, err := w.copyDatabase(ctx)
+	if err != nil {
+		return err
+	}
+	tx, err := copyDB.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin pgvector migration copy transaction: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			if rollbackErr := tx.Rollback(context.Background()); rollbackErr != nil {
+				return
+			}
+		}
+	}()
+	if err := tx.Exec(ctx, pgvectorMigrationStagingDDL(request, stagingTable)); err != nil {
+		return fmt.Errorf("create pgvector migration staging table: %w", err)
+	}
+	if _, err := tx.CopyFrom(ctx, pgx.Identifier{stagingTable}, columns, pgx.CopyFromRows(rows)); err != nil {
+		return newPGVectorCopyExecutionError(err)
+	}
+	if err := tx.Exec(ctx, pgvectorMigrationMergeSQL(request, stagingTable)); err != nil {
+		return fmt.Errorf("merge pgvector migration staging records: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit pgvector migration copy transaction: %w", err)
+	}
+	committed = true
+	return nil
+}
+
 func (w *pgxPGVectorMigrationWriter) ResetPGVectorMigrationRecords(ctx context.Context, table string) error {
 	db, err := w.database(ctx)
 	if err != nil {
@@ -434,8 +507,28 @@ func (w *pgxPGVectorMigrationWriter) database(ctx context.Context) (pgvectorMigr
 	if err != nil {
 		return nil, fmt.Errorf("connect pgvector migration database: %w", err)
 	}
-	w.db = pgxPGVectorMigrationDB{conn: conn}
+	adapter := pgxPGVectorMigrationDB{conn: conn}
+	w.db = adapter
+	w.copyDB = adapter
 	return w.db, nil
+}
+
+func (w *pgxPGVectorMigrationWriter) copyDatabase(ctx context.Context) (pgvectorMigrationCopyDB, error) {
+	if w.copyDB != nil {
+		return w.copyDB, nil
+	}
+	if db, ok := w.db.(pgvectorMigrationCopyDB); ok {
+		w.copyDB = db
+		return db, nil
+	}
+	conn, err := pgx.Connect(ctx, w.connectionURL)
+	if err != nil {
+		return nil, fmt.Errorf("connect pgvector migration database: %w", err)
+	}
+	adapter := pgxPGVectorMigrationDB{conn: conn}
+	w.db = adapter
+	w.copyDB = adapter
+	return w.copyDB, nil
 }
 
 type pgxPGVectorMigrationDB struct {
@@ -447,17 +540,37 @@ func (db pgxPGVectorMigrationDB) Exec(ctx context.Context, sql string, args ...a
 	return err
 }
 
+func (db pgxPGVectorMigrationDB) Begin(ctx context.Context) (pgvectorMigrationCopyTx, error) {
+	tx, err := db.conn.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return pgxPGVectorMigrationTx{tx: tx}, nil
+}
+
+type pgxPGVectorMigrationTx struct {
+	tx pgx.Tx
+}
+
+func (tx pgxPGVectorMigrationTx) Exec(ctx context.Context, sql string, args ...any) error {
+	_, err := tx.tx.Exec(ctx, sql, args...)
+	return err
+}
+
+func (tx pgxPGVectorMigrationTx) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
+	return tx.tx.CopyFrom(ctx, tableName, columnNames, rowSrc)
+}
+
+func (tx pgxPGVectorMigrationTx) Commit(ctx context.Context) error {
+	return tx.tx.Commit(ctx)
+}
+
+func (tx pgxPGVectorMigrationTx) Rollback(ctx context.Context) error {
+	return tx.tx.Rollback(ctx)
+}
+
 func pgvectorMigrationMappedUpsertSQL(request PGVectorMigrationWriteRequest) string {
-	columns := []string{request.IDColumn, request.VectorColumn}
-	for _, scalar := range request.ScalarColumns {
-		columns = append(columns, scalar.TargetColumn)
-	}
-	if request.DynamicColumn != "" {
-		columns = append(columns, request.DynamicColumn)
-	}
-	if request.PartitionColumn != "" {
-		columns = append(columns, request.PartitionColumn)
-	}
+	columns := pgvectorMigrationWriteColumns(request)
 	quotedColumns := make([]string, len(columns))
 	placeholders := make([]string, len(columns))
 	assignments := make([]string, 0, len(columns)-1)
@@ -483,6 +596,75 @@ func pgvectorMigrationMappedUpsertSQL(request PGVectorMigrationWriteRequest) str
 		quotePGVectorSeedIdentifier(request.IDColumn),
 		joinSQLFragments(assignments),
 	)
+}
+
+func pgvectorMigrationWriteColumns(request PGVectorMigrationWriteRequest) []string {
+	columns := []string{request.IDColumn, request.VectorColumn}
+	for _, scalar := range request.ScalarColumns {
+		columns = append(columns, scalar.TargetColumn)
+	}
+	if request.DynamicColumn != "" {
+		columns = append(columns, request.DynamicColumn)
+	}
+	if request.PartitionColumn != "" {
+		columns = append(columns, request.PartitionColumn)
+	}
+	return columns
+}
+
+func pgvectorMigrationStagingTableName(table string) string {
+	return table + "_migration_staging"
+}
+
+func pgvectorMigrationStagingDDL(request PGVectorMigrationWriteRequest, stagingTable string) string {
+	columns := pgvectorMigrationWriteColumns(request)
+	definitions := make([]string, len(columns))
+	for index, column := range columns {
+		definitions[index] = quotePGVectorSeedIdentifier(column) + " TEXT"
+	}
+	return fmt.Sprintf(`CREATE TEMP TABLE %s (%s) ON COMMIT DROP`, quotePGVectorSeedIdentifier(stagingTable), joinSQLFragments(definitions))
+}
+
+func pgvectorMigrationMergeSQL(request PGVectorMigrationWriteRequest, stagingTable string) string {
+	columns := pgvectorMigrationWriteColumns(request)
+	quotedColumns := make([]string, len(columns))
+	selectColumns := make([]string, len(columns))
+	assignments := make([]string, 0, len(columns)-1)
+	for index, column := range columns {
+		quoted := quotePGVectorSeedIdentifier(column)
+		quotedColumns[index] = quoted
+		selectColumn := quoted
+		if column == request.VectorColumn {
+			selectColumn += "::vector"
+		} else if column == request.DynamicColumn && request.DynamicColumn != "" {
+			selectColumn += "::jsonb"
+		}
+		selectColumns[index] = selectColumn
+		if column != request.IDColumn {
+			assignments = append(assignments, fmt.Sprintf("%s = EXCLUDED.%s", quoted, quoted))
+		}
+	}
+	return fmt.Sprintf(
+		`INSERT INTO %s (%s) SELECT %s FROM %s ON CONFLICT (%s) DO UPDATE SET %s`,
+		quotePGVectorSeedIdentifier(request.Table),
+		joinSQLFragments(quotedColumns),
+		joinSQLFragments(selectColumns),
+		quotePGVectorSeedIdentifier(stagingTable),
+		quotePGVectorSeedIdentifier(request.IDColumn),
+		joinSQLFragments(assignments),
+	)
+}
+
+func pgvectorMigrationCopyRows(request PGVectorMigrationWriteRequest) ([][]any, error) {
+	rows := make([][]any, len(request.Records))
+	for index, record := range request.Records {
+		args, err := pgvectorMigrationMappedArgs(record, request)
+		if err != nil {
+			return nil, err
+		}
+		rows[index] = args
+	}
+	return rows, nil
 }
 
 func pgvectorMigrationMappedArgs(record VectorMigrationRecord, request PGVectorMigrationWriteRequest) ([]any, error) {

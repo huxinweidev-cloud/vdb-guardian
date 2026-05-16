@@ -28,6 +28,7 @@ go run ./cmd/vdbg migrate-and-verify \
   --target-table items \
   --pgvector-id-column id \
   --pgvector-vector-column embedding \
+  --pgvector-write-mode batch-upsert \
   --record-mapping /tmp/vdb-guardian-record-mapping.json \
   --artifact-dir /tmp/vdb-guardian-run \
   --job-id migrate-and-verify-smoke \
@@ -96,6 +97,7 @@ When checkpointing is enabled, the Markdown report includes a `Checkpoint / resu
 - `--milvus-vector-field`: `embedding`
 - `--pgvector-id-column`: `id`
 - `--pgvector-vector-column`: `embedding`
+- `--pgvector-write-mode`: `batch-upsert`. Supported values are `batch-upsert`, `copy`, and `auto`; this is passed to the migration step before verification artifacts are built.
 - `--job-id`: `migrate-and-verify`
 - `--batch-size`: `100`
 - `--top-k`: `3`
@@ -143,6 +145,30 @@ Checkpoint files are written with `0600` permissions and contain only non-secret
 
 MVP limitation: the source Milvus reader still loads the source result set before pgvector batch writes. Checkpointing currently protects target write batch progress and resume offset; source cursor/page-level streaming remains future work.
 
+## Optional pgvector COPY write mode
+
+`migrate-and-verify` accepts the same `--pgvector-write-mode batch-upsert|copy|auto` flag as `migrate` and passes it to the internal migration step before building fingerprint and full-record verification artifacts:
+
+```bash
+go run ./cmd/vdbg migrate-and-verify \
+  --fixture testdata/migration/synthetic-small.json \
+  --milvus-address localhost:19530 \
+  --pgvector-connection-url '[REDACTED]' \
+  --artifact-dir /tmp/vdb-guardian-run \
+  --dimension 1536 \
+  --pgvector-write-mode auto \
+  --full-record-compare \
+  --checkpoint-path /tmp/vdb-guardian-run/migrate-and-verify-checkpoint.json
+```
+
+Modes and safety semantics:
+
+- `batch-upsert` is the default and safest legacy behavior.
+- `copy` writes each batch through a staging table, a transaction, PostgreSQL `COPY`, and a merge/upsert into the target table. Explicit `copy` does not fallback; a COPY, schema, validation, or context failure fails the batch.
+- `auto` tries COPY first and falls back to `batch-upsert` only for recoverable COPY execution failures. The classifier is intentionally conservative and does not fallback for validation/schema/context failures.
+
+No checkpoint is advanced until the batch write succeeds. The Markdown and diagnostic JSON reports include `write_mode_requested`, `write_mode_used`, `copy_batches`, `batch_upsert_batches`, and `copy_fallbacks`. `write_mode_used` is `mixed` when completed batches used both COPY and batch upsert, for example after an `auto` fallback.
+
 ## Scope
 
 Implemented:
@@ -159,6 +185,7 @@ Implemented:
 - Optional `--min-consistency-score` and `--max-fingerprint-distance` quality gates that fail the command after writing the Markdown report.
 - Optional `--full-record-compare` gate that builds source/target full-record artifacts and runs local full-record equality comparison from the same passing record mapping artifact.
 - Optional `--checkpoint-path` and `--resume-from` pass-through for batch-level migration checkpoint/resume.
+- Optional `--pgvector-write-mode batch-upsert|copy|auto` pass-through, with write-mode metrics in Markdown and diagnostic JSON reports.
 - Injected-step unit tests for orchestration and failure short-circuiting.
 
 ## Verified local smoke
@@ -206,7 +233,12 @@ The generated diagnostic report artifact is shaped like:
     "target_table": "items",
     "dimension": 8,
     "records_read": 100,
-    "records_written": 100
+    "records_written": 100,
+    "write_mode_requested": "batch-upsert",
+    "write_mode_used": "batch-upsert",
+    "copy_batches": 0,
+    "batch_upsert_batches": 1,
+    "copy_fallbacks": 0
   },
   "verification": {
     "consistency_score": 1,
@@ -247,8 +279,6 @@ The generated diagnostic report artifact is shaped like:
 Not implemented yet:
 
 - Source cursor/page-level streaming for resume without re-reading the source result set.
-- Production bulk import / COPY path.
-- Automatic stale target row cleanup / reconciliation.
 
 ## Safety notes
 
@@ -258,13 +288,15 @@ Full-record compare artifacts can contain record IDs, scalar fields, dynamic met
 
 By default, the migration step uses pgvector upsert semantics and does not delete stale target records. Pass `--reset-target` for disposable smoke runs where the target table should be truncated before migration. Do not enable it against production tables unless destructive cleanup is explicitly intended.
 
+If `--pgvector-write-mode copy` fails due to validation, schema, unsafe identifier, or context errors, there is no fallback. Fix the schema/mapping/context issue or rerun with `--pgvector-write-mode batch-upsert`. If `--pgvector-write-mode auto` still fails, treat the fallback classifier as intentionally conservative and inspect the sanitized error before deciding whether batch upsert is appropriate.
+
 Do not combine `--reset-target` with `--resume-from`; the command rejects this combination before migration starts.
 
 Pass `--strict-count` when the run should fail unless the post-migration pgvector target row count exactly matches `records_written`. This is most useful together with `--reset-target` for clean smoke checks; without cleanup, stale target rows can intentionally make the strict count fail.
 
 Pass `--min-consistency-score` and/or `--max-fingerprint-distance` when this command is used as an automated quality gate. These thresholds are evaluated after the Markdown report is written, so failed runs still leave a human-readable diagnostic artifact.
 
-For strict production equivalence, future increments should add source-side streaming cursor semantics, bulk import strategy, and stale-row reconciliation.
+For strict production equivalence, future increments should add source-side streaming cursor semantics and operational runbooks for stale-row reconciliation.
 
 ## Test command
 
@@ -290,3 +322,11 @@ make smoke-migration-checkpoint
 ```
 
 The smoke starts/checks the disposable migration stack, seeds the committed small Milvus fixture, runs schema/mapping gates, performs a checkpointed migration, resumes via `migrate-and-verify`, verifies 100 target rows, checks `0600` report/checkpoint permissions, and scans generated artifacts for obvious secret markers. It is intentionally outside `make test` because it requires Docker and local ports; never point it at production databases.
+
+For the opt-in pgvector COPY smoke, run:
+
+```bash
+make smoke-migration-copy
+```
+
+That smoke starts/checks the disposable migration stack, runs COPY-mode migration with `vdbg migrate`, then separately builds full-record artifacts, compares them, and runs target reconciliation. It verifies COPY metrics, full-record compare, target reconciliation with `stale_target_count=0`, `0600` artifacts, and generated-artifact secret scanning. Connection URLs and secrets are not printed; generated smoke artifacts are retained under `/tmp` for local troubleshooting. It requires Docker and local ports and must not be pointed at production databases.

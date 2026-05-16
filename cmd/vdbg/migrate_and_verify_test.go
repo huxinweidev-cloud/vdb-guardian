@@ -49,6 +49,12 @@ func TestParseMigrateAndVerifyOptions(t *testing.T) {
 	if options.Migrate.PGVectorConfig.ConnectionURL != "local-placeholder" {
 		t.Fatalf("unexpected connection URL: %s", options.Migrate.PGVectorConfig.ConnectionURL)
 	}
+	if options.Migrate.PGVectorConfig.WriteMode != "batch-upsert" {
+		t.Fatalf("unexpected pgvector write mode: %q", options.Migrate.PGVectorConfig.WriteMode)
+	}
+	if options.Migrate.MigrationConfig.WriteModeRequested != "batch-upsert" {
+		t.Fatalf("unexpected migration write mode requested: %q", options.Migrate.MigrationConfig.WriteModeRequested)
+	}
 	if options.ArtifactDir != "/tmp/vdb-guardian-run" || options.JobID != "mv-smoke" {
 		t.Fatalf("unexpected artifact options: %+v", options)
 	}
@@ -57,6 +63,45 @@ func TestParseMigrateAndVerifyOptions(t *testing.T) {
 	}
 	if options.Metric != "l2" {
 		t.Fatalf("unexpected metric: %s", options.Metric)
+	}
+}
+
+func TestParseMigrateAndVerifyOptionsAcceptsExplicitPGVectorWriteModes(t *testing.T) {
+	for _, mode := range []string{"copy", "auto"} {
+		t.Run(mode, func(t *testing.T) {
+			options, err := parseMigrateAndVerifyOptions([]string{
+				"--fixture", "fixture.json",
+				"--milvus-address", "localhost:19530",
+				"--pgvector-connection-url", "local-placeholder",
+				"--artifact-dir", t.TempDir(),
+				"--dimension", "8",
+				"--pgvector-write-mode", mode,
+			})
+			if err != nil {
+				t.Fatalf("parseMigrateAndVerifyOptions returned error: %v", err)
+			}
+			if options.Migrate.PGVectorConfig.WriteMode != mode || options.Migrate.MigrationConfig.WriteModeRequested != mode {
+				t.Fatalf("expected write mode %q to be propagated, got pgvector=%q requested=%q", mode, options.Migrate.PGVectorConfig.WriteMode, options.Migrate.MigrationConfig.WriteModeRequested)
+			}
+		})
+	}
+}
+
+func TestRunMigrateAndVerifyRejectsInvalidPGVectorWriteModeBeforeSteps(t *testing.T) {
+	steps := &fakeMigrateAndVerifySteps{}
+	_, err := runMigrateAndVerifyWithSteps(context.Background(), []string{
+		"--fixture", "fixture.json",
+		"--milvus-address", "localhost:19530",
+		"--pgvector-connection-url", "local-placeholder",
+		"--artifact-dir", t.TempDir(),
+		"--dimension", "8",
+		"--pgvector-write-mode", "stream",
+	}, steps)
+	if err == nil || !strings.Contains(err.Error(), "pgvector-write-mode") {
+		t.Fatalf("expected pgvector-write-mode validation error, got %v", err)
+	}
+	if steps.migrated || steps.resetTarget {
+		t.Fatalf("steps should not run for invalid write mode: %+v", steps)
 	}
 }
 
@@ -334,12 +379,18 @@ func TestRunMigrateAndVerifyWithInjectedSteps(t *testing.T) {
 	if !strings.Contains(string(reportData), "# vdb-guardian migrate-and-verify report") {
 		t.Fatalf("unexpected markdown report contents:\n%s", string(reportData))
 	}
+	if !strings.Contains(string(reportData), "- Write mode requested: `batch-upsert`") || !strings.Contains(string(reportData), "- Write mode used: `batch-upsert`") {
+		t.Fatalf("expected markdown report to include default write modes, got:\n%s", string(reportData))
+	}
 	diagnosticReportData, err := os.ReadFile(result.DiagnosticJSONReportPath)
 	if err != nil {
 		t.Fatalf("expected diagnostic JSON report to be written: %v", err)
 	}
 	if !strings.Contains(string(diagnosticReportData), "\"schema_version\": \"v1\"") || !strings.Contains(string(diagnosticReportData), "\"job_id\": \"mv-smoke\"") {
 		t.Fatalf("unexpected diagnostic JSON report contents:\n%s", string(diagnosticReportData))
+	}
+	if !strings.Contains(string(diagnosticReportData), "\"write_mode_requested\": \"batch-upsert\"") || !strings.Contains(string(diagnosticReportData), "\"write_mode_used\": \"batch-upsert\"") {
+		t.Fatalf("expected diagnostic JSON report to include default write modes, got:\n%s", string(diagnosticReportData))
 	}
 	if result.Verification.Output.ConsistencyScore != 1.0 {
 		t.Fatalf("unexpected consistency score: %+v", result.Verification.Output)
@@ -592,11 +643,14 @@ func (f *fakeMigrateAndVerifySteps) Migrate(ctx context.Context, options migrate
 	f.migrateCheckpointPath = options.CheckpointPath
 	f.migrateResumeFromPath = options.ResumeFromPath
 	return migration.VectorMigrationResult{
-		SourceCollection: options.MigrationConfig.SourceCollection,
-		TargetTable:      options.MigrationConfig.TargetTable,
-		Dimension:        options.MigrationConfig.Dimension,
-		RecordsRead:      100,
-		RecordsWritten:   100,
+		SourceCollection:   options.MigrationConfig.SourceCollection,
+		TargetTable:        options.MigrationConfig.TargetTable,
+		Dimension:          options.MigrationConfig.Dimension,
+		RecordsRead:        100,
+		RecordsWritten:     100,
+		WriteModeRequested: options.MigrationConfig.WriteModeRequested,
+		WriteModeUsed:      options.PGVectorConfig.WriteMode,
+		BatchUpsertBatches: 4,
 	}, nil
 }
 

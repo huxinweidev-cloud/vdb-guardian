@@ -33,11 +33,16 @@ type migrateAndVerifyDiagnosticJSON struct {
 }
 
 type migrateAndVerifyDiagnosticMigration struct {
-	SourceCollection string `json:"source_collection"`
-	TargetTable      string `json:"target_table"`
-	Dimension        int    `json:"dimension"`
-	RecordsRead      int    `json:"records_read"`
-	RecordsWritten   int    `json:"records_written"`
+	SourceCollection   string `json:"source_collection"`
+	TargetTable        string `json:"target_table"`
+	Dimension          int    `json:"dimension"`
+	RecordsRead        int    `json:"records_read"`
+	RecordsWritten     int    `json:"records_written"`
+	WriteModeRequested string `json:"write_mode_requested"`
+	WriteModeUsed      string `json:"write_mode_used"`
+	CopyBatches        int    `json:"copy_batches"`
+	BatchUpsertBatches int    `json:"batch_upsert_batches"`
+	CopyFallbacks      int    `json:"copy_fallbacks"`
 }
 
 type migrateAndVerifyDiagnosticVerify struct {
@@ -108,11 +113,16 @@ func RenderMigrateAndVerifyDiagnosticJSON(report MigrateAndVerifyDiagnosticRepor
 		JobID:         report.JobID,
 		State:         report.State.String(),
 		Migration: migrateAndVerifyDiagnosticMigration{
-			SourceCollection: report.Migration.SourceCollection,
-			TargetTable:      report.Migration.TargetTable,
-			Dimension:        report.Migration.Dimension,
-			RecordsRead:      report.Migration.RecordsRead,
-			RecordsWritten:   report.Migration.RecordsWritten,
+			SourceCollection:   report.Migration.SourceCollection,
+			TargetTable:        report.Migration.TargetTable,
+			Dimension:          report.Migration.Dimension,
+			RecordsRead:        report.Migration.RecordsRead,
+			RecordsWritten:     report.Migration.RecordsWritten,
+			WriteModeRequested: report.Migration.WriteModeRequested,
+			WriteModeUsed:      report.Migration.WriteModeUsed,
+			CopyBatches:        report.Migration.CopyBatches,
+			BatchUpsertBatches: report.Migration.BatchUpsertBatches,
+			CopyFallbacks:      report.Migration.CopyFallbacks,
 		},
 		Verification: migrateAndVerifyDiagnosticVerify{
 			ConsistencyScore: report.Output.ConsistencyScore,

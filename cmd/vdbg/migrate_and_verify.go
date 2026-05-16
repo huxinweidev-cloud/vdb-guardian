@@ -293,6 +293,7 @@ func parseMigrateAndVerifyOptions(args []string) (migrateAndVerifyOptions, error
 	var targetTable string
 	var pgvectorIDColumn string
 	var pgvectorVectorColumn string
+	var pgvectorWriteMode string
 	var recordMappingPath string
 	var checkpointPath string
 	var resumeFromPath string
@@ -319,6 +320,7 @@ func parseMigrateAndVerifyOptions(args []string) (migrateAndVerifyOptions, error
 	flagSet.StringVar(&targetTable, "target-table", "items", "pgvector target table")
 	flagSet.StringVar(&pgvectorIDColumn, "pgvector-id-column", "id", "pgvector ID column")
 	flagSet.StringVar(&pgvectorVectorColumn, "pgvector-vector-column", "embedding", "pgvector vector column")
+	flagSet.StringVar(&pgvectorWriteMode, "pgvector-write-mode", "batch-upsert", "pgvector write mode: batch-upsert, copy, or auto")
 	flagSet.StringVar(&recordMappingPath, "record-mapping", "", "optional map-migration-records JSON path for full-record migration")
 	flagSet.StringVar(&checkpointPath, "checkpoint-path", "", "optional checkpoint JSON path for batch migration progress")
 	flagSet.StringVar(&resumeFromPath, "resume-from", "", "optional checkpoint JSON path to resume from")
@@ -343,6 +345,9 @@ func parseMigrateAndVerifyOptions(args []string) (migrateAndVerifyOptions, error
 		return migrateAndVerifyOptions{}, errors.New("strict-count cannot be combined with resume-from")
 	}
 	if err := validateMigrateAndVerifyFields(fixturePath, milvusAddress, pgvectorConnectionURL, artifactDir, jobID, dimension, batchSize, topK, expandK, stableK, boundaryK, metric); err != nil {
+		return migrateAndVerifyOptions{}, err
+	}
+	if err := validatePGVectorWriteModeFlag(pgvectorWriteMode); err != nil {
 		return migrateAndVerifyOptions{}, err
 	}
 	if err := validateMigrateAndVerifyThresholdFields(minConsistencyScore, maxFingerprintDistance); err != nil {
@@ -371,19 +376,21 @@ func parseMigrateAndVerifyOptions(args []string) (migrateAndVerifyOptions, error
 				DefaultTable:  targetTable,
 				IDColumn:      pgvectorIDColumn,
 				VectorColumn:  pgvectorVectorColumn,
+				WriteMode:     pgvectorWriteMode,
 			},
 			RecordMappingPath: recordMappingPath,
 			CheckpointPath:    checkpointPath,
 			ResumeFromPath:    resumeFromPath,
 			MigrationConfig: migration.VectorMigrationConfig{
-				SourceCollection:  sourceCollection,
-				TargetTable:       targetTable,
-				Dimension:         dimension,
-				BatchSize:         batchSize,
-				CheckpointPath:    checkpointPath,
-				ResumeFromPath:    resumeFromPath,
-				JobID:             jobID,
-				RecordMappingPath: recordMappingPath,
+				SourceCollection:   sourceCollection,
+				TargetTable:        targetTable,
+				Dimension:          dimension,
+				BatchSize:          batchSize,
+				WriteModeRequested: pgvectorWriteMode,
+				CheckpointPath:     checkpointPath,
+				ResumeFromPath:     resumeFromPath,
+				JobID:              jobID,
+				RecordMappingPath:  recordMappingPath,
 			},
 		},
 		ArtifactDir:            artifactDir,

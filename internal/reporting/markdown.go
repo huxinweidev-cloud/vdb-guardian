@@ -85,6 +85,11 @@ func RenderMigrateAndVerifyMarkdown(report MigrateAndVerifyReport) (string, erro
 	fmt.Fprintf(&builder, "- Dimension: `%d`\n", report.Migration.Dimension)
 	fmt.Fprintf(&builder, "- Records read: `%d`\n", report.Migration.RecordsRead)
 	fmt.Fprintf(&builder, "- Records written: `%d`\n", report.Migration.RecordsWritten)
+	fmt.Fprintf(&builder, "- Write mode requested: `%s`\n", report.Migration.WriteModeRequested)
+	fmt.Fprintf(&builder, "- Write mode used: `%s`\n", report.Migration.WriteModeUsed)
+	fmt.Fprintf(&builder, "- COPY batches: `%d`\n", report.Migration.CopyBatches)
+	fmt.Fprintf(&builder, "- Batch upsert batches: `%d`\n", report.Migration.BatchUpsertBatches)
+	fmt.Fprintf(&builder, "- COPY fallbacks: `%d`\n", report.Migration.CopyFallbacks)
 	fmt.Fprintf(&builder, "- Reset target: `%s`\n", resetTarget)
 	fmt.Fprintf(&builder, "- Strict count: `%s`\n\n", strictCount)
 

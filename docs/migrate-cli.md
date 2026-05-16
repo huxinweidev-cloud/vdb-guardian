@@ -20,6 +20,7 @@ go run ./cmd/vdbg migrate \
   --target-table items \
   --pgvector-id-column id \
   --pgvector-vector-column embedding \
+  --pgvector-write-mode batch-upsert \
   --dimension 8 \
   --batch-size 100 \
   --require-schema-match \
@@ -44,7 +45,7 @@ records_read: 100
 records_written: 100
 ```
 
-When `--output` is provided, the command also writes a machine-readable JSON report with `0600` permissions. The report records the job id, source collection, target table, schema preflight status, optional record-mapping summary metadata, optional checkpoint summary, dimension, records read, and records written. It never includes the PostgreSQL connection URL.
+When `--output` is provided, the command also writes a machine-readable JSON report with `0600` permissions. The report records the job id, source collection, target table, schema preflight status, optional record-mapping summary metadata, optional checkpoint summary, dimension, records read, records written, and pgvector write-mode metrics. It never includes the PostgreSQL connection URL.
 
 For pre-migration full-record mapping validation, run `vdbg map-migration-records` against the same schema plan before execution. That command is local-artifact only and does not connect to Milvus or PostgreSQL.
 
@@ -112,6 +113,43 @@ Checkpoint files are written with `0600` permissions. They contain non-secret mi
 
 MVP limitation: the source Milvus reader still loads the source result set before pgvector batch writes. Checkpointing currently protects target write batch progress and resume offset; source cursor/page-level streaming remains future work.
 
+## Optional pgvector COPY write mode
+
+Use `--pgvector-write-mode` to choose how each migration batch is written into pgvector:
+
+```bash
+go run ./cmd/vdbg migrate \
+  --milvus-address localhost:19530 \
+  --pgvector-connection-url '[REDACTED]' \
+  --dimension 1536 \
+  --batch-size 1000 \
+  --pgvector-write-mode copy \
+  --checkpoint-path /secure/artifacts/migration-checkpoint.json \
+  --output /secure/artifacts/migration-report.json
+```
+
+Supported values:
+
+- `batch-upsert`: the default and safest legacy behavior. The writer uses parameterized `INSERT ... ON CONFLICT DO UPDATE` upserts for each record in the batch.
+- `copy`: an explicit bulk path. The writer creates a staging table inside a transaction, streams the batch with PostgreSQL `COPY`, then merges into the target table with upsert semantics. Explicit `copy` does **not** fall back to batch upsert; any COPY, schema, validation, or context failure fails the batch.
+- `auto`: tries the same COPY path first, then falls back to `batch-upsert` only when the failure is classified as a recoverable COPY execution failure. The fallback classifier is conservative and does not fallback for validation errors, schema errors, unsafe identifiers, context cancellation, or deadline expiry.
+
+Checkpoint safety is unchanged for all modes: the runner advances batch progress only after the whole target write succeeds. If COPY/staging/merge fails, the failed batch is recorded as failed and no checkpoint completion is written for that batch.
+
+The migration report includes these write metrics:
+
+```json
+{
+  "write_mode_requested": "auto",
+  "write_mode_used": "mixed",
+  "copy_batches": 2,
+  "batch_upsert_batches": 1,
+  "copy_fallbacks": 1
+}
+```
+
+`write_mode_requested` is the requested CLI mode. `write_mode_used` is the aggregate actual mode: `copy` when all completed batches used COPY, `batch-upsert` when all completed batches used batch upsert, and `mixed` when a run used both paths, such as an `auto` run with fallback. `copy_batches`, `batch_upsert_batches`, and `copy_fallbacks` count completed batch write paths and recoverable auto fallbacks.
+
 ## Required flags
 
 - `--milvus-address`: Milvus gRPC endpoint, for example `localhost:19530`.
@@ -124,6 +162,7 @@ MVP limitation: the source Milvus reader still loads the source result set befor
 - `--schema-plan`: pgvector schema plan JSON path. Required when `--require-schema-match` is set.
 - `--live-schema`: live pgvector schema inspection JSON path. Required when `--require-schema-match` is set.
 - `--record-mapping`: optional `vdbg map-migration-records` JSON path for mapping-driven full-record migration. The artifact must have `status: pass` and exactly one collection mapping.
+- `--pgvector-write-mode`: pgvector batch write mode: `batch-upsert`, `copy`, or `auto`.
 - `--checkpoint-path`: optional migration checkpoint JSON path. Written with `0600` permissions.
 - `--resume-from`: optional checkpoint JSON path to resume from. Defaults `--checkpoint-path` to the same file when `--checkpoint-path` is omitted.
 - `--output`: optional migration result report JSON path. Written with `0600` permissions.
@@ -138,6 +177,7 @@ MVP limitation: the source Milvus reader still loads the source result set befor
 - `--pgvector-id-column`: `id`
 - `--pgvector-vector-column`: `embedding`
 - `--batch-size`: `100`
+- `--pgvector-write-mode`: `batch-upsert`
 
 ## Scope
 
@@ -153,6 +193,7 @@ Implemented:
 - Optional machine-readable migration result JSON report via `--output`.
 - Optional mapping-driven full-record execution via `--record-mapping`, including scalar fields, dynamic metadata, and partition metadata from a passing local mapping artifact.
 - Optional batch-level checkpoint and resume via `--checkpoint-path` and `--resume-from`.
+- Optional pgvector write mode selection via `--pgvector-write-mode batch-upsert|copy|auto`, including COPY report metrics and conservative auto fallback.
 - Summary output for records read and written.
 
 Not implemented yet:
@@ -160,7 +201,7 @@ Not implemented yet:
 - Source/target fingerprint artifact generation inside this command.
 - Comparison result artifact generation inside this command.
 - Full-record equality comparison inside this command; use `vdbg migrate-and-verify --full-record-compare` for the orchestrated gate.
-- Production bulk import.
+- Source/target reconciliation inside this command; use `vdbg reconcile-target` and `vdbg cleanup-target-stale` for the explicit stale-row workflow.
 
 ## Safety notes
 
@@ -173,6 +214,8 @@ INSERT ... ON CONFLICT (id) DO UPDATE
 ```
 
 It does not drop the target table. If the target table contains old records not present in the Milvus source, this command does not delete them.
+
+If `--pgvector-write-mode copy` fails due to validation, schema, unsafe identifier, or context errors, there is no fallback. Fix the schema/mapping/context issue or rerun with `--pgvector-write-mode batch-upsert`. If `--pgvector-write-mode auto` still fails, treat the classifier as intentionally conservative and inspect the sanitized error before deciding whether batch upsert is appropriate.
 
 Checkpoint and report artifacts may contain collection names, table names, IDs/ranges, and artifact paths. Store them only in approved secured locations and keep generated artifacts out of chat/log output. Do not put credentials or connection URLs into checkpoint paths or job ids.
 
@@ -200,6 +243,14 @@ make smoke-migration-checkpoint
 ```
 
 The smoke starts/checks the disposable migration stack, seeds the committed small Milvus fixture, runs schema/mapping gates, performs a checkpointed migration, resumes via `migrate-and-verify`, verifies 100 target rows, checks `0600` report/checkpoint permissions, and scans generated artifacts for obvious secret markers. It is intentionally outside `make test` because it requires Docker and local ports; never point it at production databases.
+
+For the opt-in pgvector COPY smoke, run:
+
+```bash
+make smoke-migration-copy
+```
+
+That smoke starts/checks the disposable migration stack, runs COPY-mode migration with `vdbg migrate`, then separately builds full-record artifacts, compares them, and runs target reconciliation. It verifies COPY metrics, full-record compare, target reconciliation with `stale_target_count=0`, `0600` artifacts, and generated-artifact secret scanning. Connection URLs and secrets are not printed; generated smoke artifacts are retained under `/tmp` for local troubleshooting. It requires Docker and local ports and must not be pointed at production databases.
 
 For target reconciliation and guarded stale cleanup, run:
 

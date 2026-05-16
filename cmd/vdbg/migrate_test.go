@@ -50,6 +50,44 @@ func TestParseMigrateOptions(t *testing.T) {
 	if options.MigrationConfig.Dimension != 8 || options.MigrationConfig.BatchSize != 25 {
 		t.Fatalf("unexpected migration config: %+v", options.MigrationConfig)
 	}
+	if options.PGVectorConfig.WriteMode != "batch-upsert" || options.MigrationConfig.WriteModeRequested != "batch-upsert" {
+		t.Fatalf("expected default write mode to be propagated, got pgvector=%q requested=%q", options.PGVectorConfig.WriteMode, options.MigrationConfig.WriteModeRequested)
+	}
+}
+
+func TestParseMigrateOptionsAcceptsExplicitPGVectorWriteModes(t *testing.T) {
+	for _, mode := range []string{"copy", "auto"} {
+		t.Run(mode, func(t *testing.T) {
+			options, err := parseMigrateOptions([]string{
+				"--milvus-address", "localhost:19530",
+				"--pgvector-connection-url", "postgres://[REDACTED]",
+				"--dimension", "8",
+				"--pgvector-write-mode", mode,
+			})
+			if err != nil {
+				t.Fatalf("parseMigrateOptions returned error: %v", err)
+			}
+			if options.PGVectorConfig.WriteMode != mode || options.MigrationConfig.WriteModeRequested != mode {
+				t.Fatalf("expected write mode %q to be propagated, got pgvector=%q requested=%q", mode, options.PGVectorConfig.WriteMode, options.MigrationConfig.WriteModeRequested)
+			}
+		})
+	}
+}
+
+func TestRunMigrateRejectsInvalidPGVectorWriteModeBeforeFactory(t *testing.T) {
+	fake := &fakeMigrateRunner{}
+	err := runMigrateWithFactory(context.Background(), []string{
+		"--milvus-address", "localhost:19530",
+		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--dimension", "8",
+		"--pgvector-write-mode", "stream",
+	}, fake.newRunner)
+	if err == nil || !strings.Contains(err.Error(), "pgvector-write-mode") {
+		t.Fatalf("expected pgvector-write-mode validation error, got %v", err)
+	}
+	if fake.migrated || fake.config.Dimension != 0 {
+		t.Fatalf("factory should not run for invalid write mode: %+v", fake)
+	}
 }
 
 func TestParseMigrateOptionsWithSchemaPreflightAndOutput(t *testing.T) {
@@ -273,6 +311,9 @@ func TestRunMigrateWritesReportOutputWith0600Permissions(t *testing.T) {
 	if report.JobID != "migration-smoke" || report.Summary.RecordsWritten != 100 {
 		t.Fatalf("unexpected report: %+v", report)
 	}
+	if report.Summary.WriteModeRequested != "batch-upsert" {
+		t.Fatalf("expected diagnostic/report requested mode to be populated, got %+v", report.Summary)
+	}
 	if strings.Contains(string(data), "postgres://") {
 		t.Fatalf("report leaked connection URL: %s", data)
 	}
@@ -401,10 +442,12 @@ func (f *fakeMigrateRunner) Migrate(ctx context.Context) (migration.VectorMigrat
 	}
 	f.migrated = true
 	return migration.VectorMigrationResult{
-		SourceCollection: f.config.SourceCollection,
-		TargetTable:      f.config.TargetTable,
-		Dimension:        f.config.Dimension,
-		RecordsRead:      100,
-		RecordsWritten:   100,
+		SourceCollection:   f.config.SourceCollection,
+		TargetTable:        f.config.TargetTable,
+		Dimension:          f.config.Dimension,
+		RecordsRead:        100,
+		RecordsWritten:     100,
+		WriteModeRequested: f.config.WriteModeRequested,
+		WriteModeUsed:      f.pgvector.WriteMode,
 	}, nil
 }

@@ -3,7 +3,7 @@
 	test test-go test-python \
 	coverage coverage-go coverage-python coverage-check \
 	tidy pre-commit ci \
-	migration-stack-config migration-stack-up migration-stack-down migration-stack-status migration-stack-check smoke-migration-checkpoint smoke-target-reconciliation-cleanup
+	migration-stack-config migration-stack-up migration-stack-down migration-stack-status migration-stack-check smoke-migration-checkpoint smoke-target-reconciliation-cleanup smoke-migration-copy
 
 # Format Go and Python source. Writes changes in place.
 fmt: fmt-go fmt-python
@@ -107,3 +107,6 @@ smoke-migration-checkpoint:
 
 smoke-target-reconciliation-cleanup:
 	scripts/smoke-target-reconciliation-cleanup.sh
+
+smoke-migration-copy:
+	scripts/smoke-migration-copy.sh

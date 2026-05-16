@@ -180,6 +180,7 @@ Coverage is a gate, not proof of completeness. Migration changes should cover th
 - CLI flag parsing and incompatible-option errors.
 - Artifact/report contract, file permissions, and secret hygiene.
 - Opt-in Docker E2E smoke for real Milvus and pgvector behavior.
+- pgvector COPY-mode migration changes should run `make smoke-migration-copy`; the smoke verifies COPY metrics, full-record compare, target reconciliation with `stale_target_count=0`, `0600` artifacts, and generated-artifact secret scanning. It keeps artifacts under `/tmp` for local troubleshooting and must not print connection URLs or secrets.
 
 The next ratchet target is total >= 75.0%, `internal/migration` >= 80.0%, and `cmd/vdbg` >= 72.0% after more edge tests land.
 
@@ -203,6 +204,9 @@ make coverage-check
 
 # Run the opt-in local Docker checkpoint/resume smoke
 make smoke-migration-checkpoint
+
+# Run the opt-in local Docker pgvector COPY smoke
+make smoke-migration-copy
 
 # Run the opt-in local Docker target reconciliation/stale cleanup smoke
 make smoke-target-reconciliation-cleanup
