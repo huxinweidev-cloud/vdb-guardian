@@ -83,6 +83,68 @@ func TestMilvusSDKMigrationReaderReadsRecordsUntilEOF(t *testing.T) {
 	}
 }
 
+func TestMilvusSDKMigrationReaderReadsMappedFullRecords(t *testing.T) {
+	ctx := context.Background()
+	client := &fakeMilvusMigrationSDKClient{
+		count: 1,
+		batches: []milvusMigrationQueryBatch{{Records: []VectorMigrationRecord{{
+			ID: "sku-1", Vector: []float64{0.1, 0.2}, Scalars: map[string]any{"title": "First", "price": 9.5}, DynamicMetadata: map[string]any{"brand": "acme"}, Partition: "tenant_a",
+		}}}},
+	}
+	reader := newMilvusSDKMigrationReaderWithClientFactory("localhost:19530", 2, func(context.Context, string) (milvusMigrationSDKClient, error) {
+		return client, nil
+	})
+	request := MilvusMigrationReadRequest{Collection: "products", IDField: "sku", VectorField: "embedding", ScalarFields: []string{"title", "price"}, DynamicField: "_milvus_dynamic", PartitionField: "_milvus_partition"}
+
+	records, err := reader.ReadMilvusMigrationRecordsWithMapping(ctx, request)
+	if err != nil {
+		t.Fatalf("ReadMilvusMigrationRecordsWithMapping() error = %v", err)
+	}
+	if len(records) != 1 || records[0].Scalars["title"] != "First" || records[0].DynamicMetadata["brand"] != "acme" || records[0].Partition != "tenant_a" {
+		t.Fatalf("unexpected records: %#v", records)
+	}
+	if len(client.requests) != 1 || !reflect.DeepEqual(client.requests[0].ScalarFields, []string{"title", "price"}) || client.requests[0].DynamicField != "_milvus_dynamic" || client.requests[0].PartitionField != "_milvus_partition" {
+		t.Fatalf("unexpected request: %#v", client.requests)
+	}
+}
+
+func TestPGXPGVectorMigrationWriterWritesMappedFullRecords(t *testing.T) {
+	ctx := context.Background()
+	db := &fakePGVectorMigrationDB{}
+	writer := newPGXPGVectorMigrationWriterWithDB(db)
+	request := PGVectorMigrationWriteRequest{
+		Table:           "products",
+		IDColumn:        "sku",
+		VectorColumn:    "embedding",
+		ScalarColumns:   []string{"title", "price"},
+		DynamicColumn:   "milvus_dynamic",
+		PartitionColumn: "milvus_partition",
+		Records: []VectorMigrationRecord{{
+			ID: "sku-1", Vector: []float64{0.1, 0.2}, Scalars: map[string]any{"title": "First", "price": 9.5}, DynamicMetadata: map[string]any{"brand": "acme"}, Partition: "tenant_a",
+		}},
+	}
+
+	if err := writer.WritePGVectorMigrationRecordsWithMapping(ctx, request); err != nil {
+		t.Fatalf("WritePGVectorMigrationRecordsWithMapping() error = %v", err)
+	}
+	if len(db.calls) != 1 {
+		t.Fatalf("expected 1 exec call, got %d", len(db.calls))
+	}
+	call := db.calls[0]
+	if !strings.Contains(call.sql, `INSERT INTO "products" ("sku", "embedding", "title", "price", "milvus_dynamic", "milvus_partition")`) {
+		t.Fatalf("unexpected SQL: %s", call.sql)
+	}
+	if strings.Contains(call.sql, "First") || strings.Contains(call.sql, "acme") || strings.Contains(call.sql, "tenant_a") {
+		t.Fatalf("SQL should use bound values, got: %s", call.sql)
+	}
+	if len(call.args) != 6 || call.args[0] != "sku-1" || call.args[1] != "[0.1,0.2]" || call.args[2] != "First" || call.args[3] != 9.5 || call.args[5] != "tenant_a" {
+		t.Fatalf("unexpected args: %#v", call.args)
+	}
+	if got, ok := call.args[4].([]byte); !ok || string(got) != `{"brand":"acme"}` {
+		t.Fatalf("unexpected dynamic metadata arg: %#v", call.args[4])
+	}
+}
+
 func TestMilvusSDKMigrationReaderWrapsErrors(t *testing.T) {
 	ctx := context.Background()
 	tests := []struct {
