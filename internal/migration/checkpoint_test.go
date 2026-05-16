@@ -2,6 +2,7 @@ package migration
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -186,6 +187,132 @@ func TestValidateVectorMigrationResumeRejectsUnsafeMismatches(t *testing.T) {
 				t.Fatalf("expected %q error, got %v", tt.wantSubstr, err)
 			}
 		})
+	}
+}
+
+func TestReadVectorMigrationCheckpointRejectsMalformedJSON(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "checkpoint.json")
+	if err := os.WriteFile(path, []byte("{not-json"), 0o600); err != nil {
+		t.Fatalf("write malformed checkpoint fixture: %v", err)
+	}
+
+	_, err := ReadVectorMigrationCheckpoint(path)
+	if err == nil || !strings.Contains(err.Error(), "unmarshal vector migration checkpoint") {
+		t.Fatalf("expected unmarshal checkpoint error, got %v", err)
+	}
+}
+
+func TestValidateVectorMigrationResumeRejectsInvalidInvariants(t *testing.T) {
+	base := BuildVectorMigrationCheckpoint(VectorMigrationCheckpointInput{
+		Status:           VectorMigrationCheckpointStatusFailed,
+		SourceCollection: "items",
+		TargetTable:      "items_copy",
+		Dimension:        8,
+		BatchSize:        100,
+		RecordsRead:      200,
+		RecordsWritten:   100,
+		CompletedBatches: []VectorMigrationCheckpointBatch{{Index: 0, Start: 0, End: 100, RecordsWritten: 100}},
+		Resume: VectorMigrationCheckpointResume{
+			NextBatchIndex:           1,
+			NextRecordOffset:         100,
+			RecordMappingFingerprint: "sha256:mapping",
+			SchemaPlanFingerprint:    "sha256:schema",
+		},
+	})
+	expectation := VectorMigrationResumeExpectation{
+		SourceCollection:         "items",
+		TargetTable:              "items_copy",
+		Dimension:                8,
+		BatchSize:                100,
+		RecordMappingFingerprint: "sha256:mapping",
+		SchemaPlanFingerprint:    "sha256:schema",
+	}
+
+	tests := []struct {
+		name       string
+		mutate     func(*VectorMigrationCheckpoint)
+		wantSubstr string
+	}{
+		{name: "unsupported version", mutate: func(c *VectorMigrationCheckpoint) { c.SchemaVersion = "v0" }, wantSubstr: "schema version"},
+		{name: "negative offset", mutate: func(c *VectorMigrationCheckpoint) { c.Resume.NextRecordOffset = -1 }, wantSubstr: "next record offset"},
+		{name: "offset exceeds read", mutate: func(c *VectorMigrationCheckpoint) { c.Resume.NextRecordOffset = 300 }, wantSubstr: "exceeds records read"},
+		{name: "negative batch index", mutate: func(c *VectorMigrationCheckpoint) { c.Resume.NextBatchIndex = -1 }, wantSubstr: "next batch index"},
+		{name: "unaligned offset", mutate: func(c *VectorMigrationCheckpoint) { c.Resume.NextRecordOffset = 50 }, wantSubstr: "not aligned"},
+		{name: "completed written mismatch", mutate: func(c *VectorMigrationCheckpoint) { c.RecordsWritten = 99 }, wantSubstr: "completed batch records"},
+		{name: "invalid batch range", mutate: func(c *VectorMigrationCheckpoint) { c.CompletedBatches[0].End = 300 }, wantSubstr: "invalid range"},
+		{name: "invalid batch records written", mutate: func(c *VectorMigrationCheckpoint) { c.CompletedBatches[0].RecordsWritten = 101 }, wantSubstr: "invalid records_written"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			checkpoint := base
+			checkpoint.CompletedBatches = append([]VectorMigrationCheckpointBatch(nil), base.CompletedBatches...)
+			tt.mutate(&checkpoint)
+			err := ValidateVectorMigrationResume(checkpoint, expectation)
+			if err == nil || !strings.Contains(err.Error(), tt.wantSubstr) {
+				t.Fatalf("expected %q error, got %v", tt.wantSubstr, err)
+			}
+		})
+	}
+}
+
+func TestSanitizeVectorMigrationCheckpointErrorRedactsSecretMarkers(t *testing.T) {
+	secretErrors := []string{
+		"connect postgres://user:pass@example/db failed",
+		"postgresql://user:pass@example/db failed",
+		"password=super-secret rejected",
+		"credential expired",
+		"token missing",
+		"api_key invalid",
+		"Bearer abc rejected",
+	}
+	for _, input := range secretErrors {
+		t.Run(input, func(t *testing.T) {
+			if got := SanitizeVectorMigrationCheckpointError(errors.New(input)); got != "[REDACTED]" {
+				t.Fatalf("sanitized error = %q, want [REDACTED]", got)
+			}
+		})
+	}
+
+	longErr := strings.Repeat("x", 200)
+	if got := SanitizeVectorMigrationCheckpointError(errors.New(longErr)); len(got) != 163 || !strings.HasSuffix(got, "...") {
+		t.Fatalf("expected truncated error with ellipsis, got len=%d value=%q", len(got), got)
+	}
+}
+
+func TestVectorMigrationArtifactsTightenExistingPermissions(t *testing.T) {
+	dir := t.TempDir()
+	checkpointPath := filepath.Join(dir, "checkpoint.json")
+	reportPath := filepath.Join(dir, "report.json")
+	for _, path := range []string{checkpointPath, reportPath} {
+		if err := os.WriteFile(path, []byte("old"), 0o666); err != nil {
+			t.Fatalf("write broad-permission fixture %s: %v", path, err)
+		}
+		if err := os.Chmod(path, 0o666); err != nil {
+			t.Fatalf("chmod broad-permission fixture %s: %v", path, err)
+		}
+	}
+
+	checkpoint := BuildVectorMigrationCheckpoint(VectorMigrationCheckpointInput{
+		Status:           VectorMigrationCheckpointStatusRunning,
+		SourceCollection: "items",
+		TargetTable:      "items_copy",
+		Dimension:        8,
+		BatchSize:        100,
+	})
+	if err := WriteVectorMigrationCheckpoint(checkpointPath, checkpoint); err != nil {
+		t.Fatalf("WriteVectorMigrationCheckpoint returned error: %v", err)
+	}
+	if err := WriteVectorMigrationReport(reportPath, VectorMigrationReport{SchemaVersion: VectorMigrationReportVersion, Status: "pass"}); err != nil {
+		t.Fatalf("WriteVectorMigrationReport returned error: %v", err)
+	}
+	for _, path := range []string{checkpointPath, reportPath} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("stat %s: %v", path, err)
+		}
+		if got := info.Mode().Perm(); got != 0o600 {
+			t.Fatalf("%s permissions = %o, want 0600", path, got)
+		}
 	}
 }
 

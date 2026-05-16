@@ -189,5 +189,14 @@ Full gate before commit:
 make fmt
 make lint
 make test
+make coverage-check
 git diff --check
 ```
+
+For migration-critical changes, also run the opt-in local Docker smoke:
+
+```bash
+make smoke-migration-checkpoint
+```
+
+The smoke starts/checks the disposable migration stack, seeds the committed small Milvus fixture, runs schema/mapping gates, performs a checkpointed migration, resumes via `migrate-and-verify`, verifies 100 target rows, checks `0600` report/checkpoint permissions, and scans generated artifacts for obvious secret markers. It is intentionally outside `make test` because it requires Docker and local ports; never point it at production databases.

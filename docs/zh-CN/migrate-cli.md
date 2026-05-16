@@ -189,5 +189,14 @@ go test ./cmd/vdbg -run 'TestParseMigrate|TestRunMigrate' -v
 make fmt
 make lint
 make test
+make coverage-check
 git diff --check
 ```
+
+对于迁移关键路径变更，还应运行 opt-in 本地 Docker 冒烟：
+
+```bash
+make smoke-migration-checkpoint
+```
+
+该冒烟会启动/检查一次性迁移栈，seed 已提交的小型 Milvus fixture，执行 schema/mapping gates，运行带 checkpoint 的迁移，再通过 `migrate-and-verify` 走 resume 路径，验证目标端 100 行数据、`0600` report/checkpoint 权限，并扫描生成 artifact 中的明显 secret marker。它依赖 Docker 和本地端口，因此不会放入默认 `make test`；不要把它指向生产数据库。

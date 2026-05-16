@@ -1,9 +1,9 @@
 .PHONY: fmt fmt-go fmt-python fmt-check fmt-check-go fmt-check-python \
 	lint lint-go lint-python lint-golangci \
 	test test-go test-python \
-	coverage coverage-go coverage-python \
+	coverage coverage-go coverage-python coverage-check \
 	tidy pre-commit ci \
-	migration-stack-config migration-stack-up migration-stack-down migration-stack-status migration-stack-check
+	migration-stack-config migration-stack-up migration-stack-down migration-stack-status migration-stack-check smoke-migration-checkpoint
 
 # Format Go and Python source. Writes changes in place.
 fmt: fmt-go fmt-python
@@ -66,6 +66,9 @@ coverage-go:
 coverage-python:
 	cd python && uv run pytest --cov=vdb_fingerprint_engine --cov-report=term-missing
 
+coverage-check:
+	scripts/check-go-coverage.sh
+
 # Tidy Go modules and verify go.sum integrity.
 tidy:
 	go mod tidy
@@ -98,3 +101,6 @@ migration-stack-status:
 migration-stack-check:
 	scripts/check-migration-stack.sh postgres
 	scripts/check-migration-stack.sh milvus-port
+
+smoke-migration-checkpoint:
+	scripts/smoke-migration-checkpoint-resume.sh

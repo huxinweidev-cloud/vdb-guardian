@@ -167,6 +167,21 @@ This project follows strict TDD:
 - New code must have **≥80% test coverage**
 - Core modules (jobs, connectors, engine) must have **≥90% coverage**
 - PRs must include coverage reports
+- Migration-critical changes must also run `make coverage-check`, which enforces the current ratcheting floor for Go coverage:
+  - total Go coverage >= 70.0%
+  - `cmd/vdbg` >= 65.0%
+  - `internal/migration` >= 70.0%
+  - `internal/reporting` >= 85.0%
+
+Coverage is a gate, not proof of completeness. Migration changes should cover this quality matrix:
+
+- Unit logic for pure models, validation, and artifact serializers.
+- Runner behavior for batch writes, failures, checkpoint updates, and resume skips.
+- CLI flag parsing and incompatible-option errors.
+- Artifact/report contract, file permissions, and secret hygiene.
+- Opt-in Docker E2E smoke for real Milvus and pgvector behavior.
+
+The next ratchet target is total >= 75.0%, `internal/migration` >= 80.0%, and `cmd/vdbg` >= 72.0% after more edge tests land.
 
 ### Running Tests
 
@@ -181,8 +196,13 @@ make test-go
 make test-python
 
 # Run Go tests with coverage
-go test -coverprofile=coverage.txt ./...
-go tool cover -html=coverage.txt
+make coverage-go
+
+# Enforce migration-critical Go coverage floors
+make coverage-check
+
+# Run the opt-in local Docker checkpoint/resume smoke
+make smoke-migration-checkpoint
 
 # Run Python tests with coverage
 cd python
