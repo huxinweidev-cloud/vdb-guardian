@@ -84,6 +84,13 @@ func main() {
 		}
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "compare-full-records" {
+		if err := runCompareFullRecordsCommand(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "compare-full-records failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "inspect-milvus" {
 		if err := runInspectMilvusCommand(context.Background(), os.Args[2:]); err != nil {
 			fmt.Fprintf(os.Stderr, "inspect-milvus failed: %v\n", err)
