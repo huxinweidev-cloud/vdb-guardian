@@ -376,6 +376,19 @@ The command writes:
 
 When both artifacts are built from the same committed fixture and compatible settings, the comparison should report `matched_queries: 10` and no missing source or target queries. Exact distances depend on source/target retrieval behavior.
 
+## Full-record artifact comparison check
+
+If source and target full-record artifacts already exist, compare them locally for scalar, dynamic metadata, partition, vector hash, and vector dimension equality:
+
+```bash
+go run ./cmd/vdbg compare-full-records \
+  --source testdata/migration/source-full-record-artifact.json \
+  --target testdata/migration/target-full-record-artifact.json \
+  --output /tmp/vdb-guardian-full-record-compare.json
+```
+
+The command writes a `0600` JSON report. It exits non-zero on `status: fail` after preserving the report for diagnostics. Live Milvus/pgvector full-record artifact builders are not part of this stack slice yet; the committed sample artifacts exercise the artifact-only contract.
+
 ## Milvus connector smoke check
 
 The low-level Milvus readiness check validates that the gRPC SDK endpoint is reachable:
@@ -386,4 +399,4 @@ scripts/check-migration-stack.sh milvus-port
 
 ## Current limitations
 
-This stack now supports validating the pgvector target-side seed, search, and fingerprint artifact loops, source-side Milvus fixture seeding, search, and fingerprint artifact loops, real Milvus-to-pgvector migration, one-shot migrate-and-verify orchestration, plus direct source/target artifact comparison. Production checkpointing, metadata columns, Milvus partitions, and cleanup policies remain future work.
+This stack now supports validating the pgvector target-side seed, search, and fingerprint artifact loops, source-side Milvus fixture seeding, search, and fingerprint artifact loops, real Milvus-to-pgvector migration, one-shot migrate-and-verify orchestration, direct source/target fingerprint artifact comparison, and artifact-only full-record equality comparison. Production checkpointing, live full-record artifact builders, Milvus partitions in real smoke fixtures, and cleanup policies remain future work.

@@ -181,6 +181,37 @@ func TestMarshalFullRecordCompareReportKeepsStableJSONShape(t *testing.T) {
 	}
 }
 
+func TestMarshalFullRecordCompareReportPreservesZeroMismatchValues(t *testing.T) {
+	report := FullRecordCompareReport{
+		SchemaVersion: FullRecordCompareReportVersion,
+		Status:        FullRecordCompareStatusFail,
+		Mismatches: []FullRecordMismatch{{
+			ID:          "sku-1",
+			FieldPath:   "scalars.count",
+			SourceValue: 0,
+			TargetValue: nil,
+		}},
+	}
+
+	data, err := MarshalFullRecordCompareReport(report)
+	if err != nil {
+		t.Fatalf("MarshalFullRecordCompareReport returned error: %v", err)
+	}
+	var decoded struct {
+		Mismatches []map[string]any `json:"mismatches"`
+	}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("unmarshal report: %v", err)
+	}
+	mismatch := decoded.Mismatches[0]
+	if _, ok := mismatch["source_value"]; !ok {
+		t.Fatalf("source_value was omitted from %#v", mismatch)
+	}
+	if _, ok := mismatch["target_value"]; !ok {
+		t.Fatalf("target_value was omitted from %#v", mismatch)
+	}
+}
+
 func fullRecordArtifactFixture(system string, records []FullRecordArtifactRecord) FullRecordArtifact {
 	return FullRecordArtifact{
 		SchemaVersion:     FullRecordArtifactVersion,

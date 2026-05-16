@@ -73,6 +73,7 @@ Python 检索行为指纹算法引擎
 - `vdbg search-pgvector` 真实 pgvector 检索冒烟 CLI；
 - `vdbg build-pgvector-artifact` 真实 pgvector 指纹 artifact CLI；
 - `vdbg compare-artifacts` 真实源/目标指纹 artifact 对比 CLI；
+- `vdbg compare-full-records` 本地 full-record artifact 一致性对比 CLI，用于校验 scalar、dynamic metadata、partition 与 vector hash。
 - `vdbg inspect-milvus` 只读 Milvus 元数据检查与迁移规划 JSON CLI；
 - `vdbg plan-pgvector-schema` dry-run pgvector schema / DDL 规划 CLI；
 - `vdbg compare-schema-plans` 在 apply pgvector DDL 前执行只读 schema plan 对比门禁；
@@ -577,7 +578,24 @@ go run ./cmd/vdbg compare-artifacts \
 docs/compare-artifacts-cli.md
 ```
 
-### 23. 合成向量 Fixture
+### 23. Full-record Artifact 一致性对比 CLI
+
+`vdbg compare-full-records` 会读取本地 source / target full-record artifact，并校验 scalar、dynamic metadata、partition、vector hash 和 vector dimension 是否一致：
+
+```bash
+go run ./cmd/vdbg compare-full-records \
+  --source testdata/migration/source-full-record-artifact.json \
+  --target testdata/migration/target-full-record-artifact.json \
+  --output /tmp/vdb-guardian-full-record-compare.json
+```
+
+命令会以 `0600` 权限写出 JSON report；当 report 为 `status: fail` 时，命令仍保留诊断产物并返回非零状态。详细说明见：
+
+```text
+docs/zh-CN/full-record-compare-cli.md
+```
+
+### 24. 合成向量 Fixture
 
 `vdbg generate-synthetic-fixture` 命令可以生成固定 seed 的 records 与 query vectors，供后续 Milvus 写入、pgvector 写入和迁移对比使用。
 

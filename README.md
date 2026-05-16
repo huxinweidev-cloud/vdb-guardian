@@ -44,6 +44,7 @@ Implemented in this scaffold:
 - `vdbg search-pgvector` real pgvector search smoke CLI.
 - `vdbg build-pgvector-artifact` real pgvector fingerprint artifact CLI.
 - `vdbg compare-artifacts` real source/target fingerprint artifact comparison CLI.
+- `vdbg compare-full-records` local full-record artifact equality comparison CLI for scalar, dynamic metadata, partition, and vector hash checks.
 - `vdbg inspect-milvus` read-only Milvus metadata inspection and migration planning JSON CLI.
 - `vdbg plan-pgvector-schema` dry-run pgvector schema/DDL planning CLI.
 - `vdbg compare-schema-plans` read-only schema plan comparison gate before applying pgvector DDL.
@@ -148,6 +149,7 @@ go run ./cmd/vdbg seed-pgvector --fixture testdata/migration/synthetic-small.jso
 go run ./cmd/vdbg search-pgvector --fixture testdata/migration/synthetic-small.json --connection-url '[REDACTED]' --top-k 3 --expand-k 5
 go run ./cmd/vdbg build-pgvector-artifact --fixture testdata/migration/synthetic-small.json --connection-url '[REDACTED]' --output /tmp/vdb-guardian-target-fingerprint.json --top-k 3 --expand-k 5 --stable-k 2 --boundary-k 1
 go run ./cmd/vdbg compare-artifacts --source /tmp/vdb-guardian-source-fingerprint.json --target /tmp/vdb-guardian-target-fingerprint.json --artifact-dir /tmp/vdb-guardian-compare --job-id real-artifact-smoke
+go run ./cmd/vdbg compare-full-records --source testdata/migration/source-full-record-artifact.json --target testdata/migration/target-full-record-artifact.json --output /tmp/vdb-guardian-full-record-compare.json
 ```
 
 ## Engine protocol
@@ -361,6 +363,19 @@ go run ./cmd/vdbg compare-artifacts \
 ```
 
 See `docs/compare-artifacts-cli.md` for the comparison workflow and result schema.
+
+## Full-record artifact comparison
+
+The `vdbg compare-full-records` command compares local full-record artifacts for scalar fields, dynamic metadata, partition metadata, vector hash, and vector dimension equality:
+
+```bash
+go run ./cmd/vdbg compare-full-records \
+  --source testdata/migration/source-full-record-artifact.json \
+  --target testdata/migration/target-full-record-artifact.json \
+  --output /tmp/vdb-guardian-full-record-compare.json
+```
+
+It writes a `0600` JSON report and exits non-zero on `status: fail` after preserving diagnostics. See `docs/full-record-compare-cli.md` for the artifact schema, report schema, and current artifact-only boundary.
 
 ## Synthetic vector fixtures
 

@@ -83,6 +83,27 @@ func TestRunCompareFullRecordsReturnsErrorOnMismatch(t *testing.T) {
 	}
 }
 
+func TestRunCompareFullRecordsOverwritesReportWith0600(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := writeFullRecordArtifactFixture(t, dir, "source.json", "milvus", []migration.FullRecordArtifactRecord{{ID: "sku-1", VectorHash: "sha256:111", VectorDimension: 8}})
+	targetPath := writeFullRecordArtifactFixture(t, dir, "target.json", "pgvector", []migration.FullRecordArtifactRecord{{ID: "sku-1", VectorHash: "sha256:111", VectorDimension: 8}})
+	outputPath := filepath.Join(dir, "report.json")
+	if err := os.WriteFile(outputPath, []byte("old"), 0o644); err != nil {
+		t.Fatalf("write existing report: %v", err)
+	}
+
+	if err := runCompareFullRecords([]string{"--source", sourcePath, "--target", targetPath, "--output", outputPath}); err != nil {
+		t.Fatalf("runCompareFullRecords returned error: %v", err)
+	}
+	info, err := os.Stat(outputPath)
+	if err != nil {
+		t.Fatalf("stat output: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("output mode after overwrite = %#o", got)
+	}
+}
+
 func writeFullRecordArtifactFixture(t *testing.T, dir, name, system string, records []migration.FullRecordArtifactRecord) string {
 	t.Helper()
 	path := filepath.Join(dir, name)

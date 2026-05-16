@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optional `vdbg migrate --require-schema-match` preflight and `--output` JSON result report for standalone migrations
 - Local-artifact `vdbg map-migration-records` CLI for validating full-record mapping plans before execution
 - Optional `vdbg migrate --record-mapping` execution for consuming passing mapping artifacts and migrating mapped scalar fields, dynamic metadata, and partition metadata alongside id/vector records
+- Local-artifact `vdbg compare-full-records` CLI for full-record equality reports across scalar fields, dynamic metadata, partition metadata, vector hashes, and vector dimensions
 
 ### Changed
 

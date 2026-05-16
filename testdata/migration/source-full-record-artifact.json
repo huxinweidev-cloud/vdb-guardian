@@ -1,0 +1,43 @@
+{
+  "schema_version": "v1",
+  "system": "milvus",
+  "collection": "items",
+  "record_mapping_path": "/tmp/vdb-guardian-record-mapping.json",
+  "records": [
+    {
+      "id": "sku-1",
+      "vector_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "vector_dimension": 8,
+      "scalars": {
+        "title": "First",
+        "price": 9.5,
+        "active": true,
+        "category": null
+      },
+      "dynamic_metadata": {
+        "brand": "acme",
+        "tags": ["sale", "featured"],
+        "nested": {
+          "score": 0.99
+        }
+      },
+      "partition": "tenant_a"
+    },
+    {
+      "id": "sku-2",
+      "vector_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "vector_dimension": 8,
+      "scalars": {
+        "title": "Second",
+        "price": 12,
+        "active": false,
+        "category": "clearance"
+      },
+      "dynamic_metadata": {
+        "brand": "acme",
+        "tags": ["clearance"]
+      },
+      "partition": "tenant_b"
+    }
+  ]
+}

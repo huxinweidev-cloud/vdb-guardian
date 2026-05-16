@@ -65,8 +65,8 @@ type FullRecordCompareSummary struct {
 type FullRecordMismatch struct {
 	ID          string `json:"id"`
 	FieldPath   string `json:"field_path"`
-	SourceValue any    `json:"source_value,omitempty"`
-	TargetValue any    `json:"target_value,omitempty"`
+	SourceValue any    `json:"source_value"`
+	TargetValue any    `json:"target_value"`
 }
 
 // FullRecordCompareReport is the stable machine-readable output from comparing
@@ -101,51 +101,9 @@ func CompareFullRecordArtifacts(source, target FullRecordArtifact) (FullRecordCo
 		return FullRecordCompareReport{}, err
 	}
 
-	report := FullRecordCompareReport{
-		SchemaVersion: FullRecordCompareReportVersion,
-		Status:        FullRecordCompareStatusPass,
-		Source:        FullRecordCompareEndpoint{System: source.System, Collection: source.Collection, RecordCount: len(source.Records)},
-		Target:        FullRecordCompareEndpoint{System: target.System, Collection: target.Collection, RecordCount: len(target.Records)},
-	}
-
-	ids := sortedFullRecordIDs(sourceRecords, targetRecords)
-	mismatchedIDs := make(map[string]struct{})
-	for _, id := range ids {
-		sourceRecord, sourceOK := sourceRecords[id]
-		targetRecord, targetOK := targetRecords[id]
-		switch {
-		case !sourceOK:
-			report.MissingSourceIDs = append(report.MissingSourceIDs, id)
-		case !targetOK:
-			report.MissingTargetIDs = append(report.MissingTargetIDs, id)
-		default:
-			report.Summary.MatchedRecords++
-			before := len(report.Mismatches)
-			report.Mismatches = append(report.Mismatches, compareFullRecordFields(sourceRecord, targetRecord)...)
-			if len(report.Mismatches) > before {
-				mismatchedIDs[id] = struct{}{}
-			}
-		}
-	}
-
-	report.Summary.MissingSourceRecords = len(report.MissingSourceIDs)
-	report.Summary.MissingTargetRecords = len(report.MissingTargetIDs)
-	report.Summary.MismatchedRecords = len(mismatchedIDs)
-	for _, mismatch := range report.Mismatches {
-		switch {
-		case strings.HasPrefix(mismatch.FieldPath, "scalars."):
-			report.Summary.ScalarMismatches++
-		case strings.HasPrefix(mismatch.FieldPath, "dynamic_metadata."):
-			report.Summary.DynamicMetadataMismatches++
-		case mismatch.FieldPath == "partition":
-			report.Summary.PartitionMismatches++
-		case strings.HasPrefix(mismatch.FieldPath, "vector_"):
-			report.Summary.VectorMismatches++
-		}
-	}
-	if report.Summary.MissingSourceRecords > 0 || report.Summary.MissingTargetRecords > 0 || report.Summary.MismatchedRecords > 0 {
-		report.Status = FullRecordCompareStatusFail
-	}
+	report := newFullRecordCompareReport(source, target)
+	mismatchedIDs := compareFullRecordRows(&report, sourceRecords, targetRecords)
+	finalizeFullRecordCompareReport(&report, mismatchedIDs)
 	return report, nil
 }
 
@@ -157,6 +115,70 @@ func MarshalFullRecordCompareReport(report FullRecordCompareReport) ([]byte, err
 		return nil, fmt.Errorf("marshal full-record compare report: %w", err)
 	}
 	return append(data, '\n'), nil
+}
+
+func newFullRecordCompareReport(source, target FullRecordArtifact) FullRecordCompareReport {
+	report := FullRecordCompareReport{
+		SchemaVersion:    FullRecordCompareReportVersion,
+		Status:           FullRecordCompareStatusPass,
+		Source:           FullRecordCompareEndpoint{System: source.System, Collection: source.Collection, RecordCount: len(source.Records)},
+		Target:           FullRecordCompareEndpoint{System: target.System, Collection: target.Collection, RecordCount: len(target.Records)},
+		MissingSourceIDs: []string{},
+		MissingTargetIDs: []string{},
+		Mismatches:       []FullRecordMismatch{},
+	}
+	return report
+}
+
+func compareFullRecordRows(report *FullRecordCompareReport, sourceRecords, targetRecords map[string]FullRecordArtifactRecord) map[string]struct{} {
+	mismatchedIDs := make(map[string]struct{})
+	for _, id := range sortedFullRecordIDs(sourceRecords, targetRecords) {
+		sourceRecord, sourceOK := sourceRecords[id]
+		targetRecord, targetOK := targetRecords[id]
+		compareFullRecordRow(report, mismatchedIDs, id, sourceRecord, sourceOK, targetRecord, targetOK)
+	}
+	return mismatchedIDs
+}
+
+func compareFullRecordRow(report *FullRecordCompareReport, mismatchedIDs map[string]struct{}, id string, sourceRecord FullRecordArtifactRecord, sourceOK bool, targetRecord FullRecordArtifactRecord, targetOK bool) {
+	switch {
+	case !sourceOK:
+		report.MissingSourceIDs = append(report.MissingSourceIDs, id)
+	case !targetOK:
+		report.MissingTargetIDs = append(report.MissingTargetIDs, id)
+	default:
+		report.Summary.MatchedRecords++
+		before := len(report.Mismatches)
+		report.Mismatches = append(report.Mismatches, compareFullRecordFields(sourceRecord, targetRecord)...)
+		if len(report.Mismatches) > before {
+			mismatchedIDs[id] = struct{}{}
+		}
+	}
+}
+
+func finalizeFullRecordCompareReport(report *FullRecordCompareReport, mismatchedIDs map[string]struct{}) {
+	report.Summary.MissingSourceRecords = len(report.MissingSourceIDs)
+	report.Summary.MissingTargetRecords = len(report.MissingTargetIDs)
+	report.Summary.MismatchedRecords = len(mismatchedIDs)
+	for _, mismatch := range report.Mismatches {
+		addFullRecordMismatchSummary(&report.Summary, mismatch)
+	}
+	if report.Summary.MissingSourceRecords > 0 || report.Summary.MissingTargetRecords > 0 || report.Summary.MismatchedRecords > 0 {
+		report.Status = FullRecordCompareStatusFail
+	}
+}
+
+func addFullRecordMismatchSummary(summary *FullRecordCompareSummary, mismatch FullRecordMismatch) {
+	switch {
+	case strings.HasPrefix(mismatch.FieldPath, "scalars."):
+		summary.ScalarMismatches++
+	case strings.HasPrefix(mismatch.FieldPath, "dynamic_metadata."):
+		summary.DynamicMetadataMismatches++
+	case mismatch.FieldPath == "partition":
+		summary.PartitionMismatches++
+	case strings.HasPrefix(mismatch.FieldPath, "vector_"):
+		summary.VectorMismatches++
+	}
 }
 
 func validateFullRecordArtifact(label string, artifact FullRecordArtifact) error {
