@@ -109,15 +109,9 @@ func runMigrateAndVerifyWithSteps(ctx context.Context, args []string, steps migr
 	if err != nil {
 		return migrateAndVerifyResult{}, err
 	}
-	if options.StrictCount {
-		var targetCount int64
-		targetCount, err = steps.CountTarget(ctx, options)
-		if err != nil {
-			return migrateAndVerifyResult{}, err
-		}
-		if targetCount != int64(migrationResult.RecordsWritten) {
-			return migrateAndVerifyResult{}, fmt.Errorf("strict count mismatch: records_written=%d target_count=%d", migrationResult.RecordsWritten, targetCount)
-		}
+	strictCountErr := validateMigrateAndVerifyStrictCount(ctx, options, steps, migrationResult)
+	if strictCountErr != nil {
+		return migrateAndVerifyResult{}, strictCountErr
 	}
 	sourcePath := filepath.Join(options.ArtifactDir, options.JobID+"-source-fingerprint.json")
 	targetPath := filepath.Join(options.ArtifactDir, options.JobID+"-target-fingerprint.json")
@@ -154,6 +148,8 @@ func runMigrateAndVerifyWithSteps(ctx context.Context, args []string, steps migr
 		SourceFullRecordPath:     fullRecordPaths.Source,
 		TargetFullRecordPath:     fullRecordPaths.Target,
 		FullRecordComparePath:    fullRecordPaths.Compare,
+		CheckpointPath:           options.Migrate.CheckpointPath,
+		ResumeFromPath:           options.Migrate.ResumeFromPath,
 	}); err != nil {
 		return migrateAndVerifyResult{}, err
 	}
@@ -173,6 +169,8 @@ func runMigrateAndVerifyWithSteps(ctx context.Context, args []string, steps migr
 			SourceFullRecordPath:     fullRecordPaths.Source,
 			TargetFullRecordPath:     fullRecordPaths.Target,
 			FullRecordComparePath:    fullRecordPaths.Compare,
+			CheckpointPath:           options.Migrate.CheckpointPath,
+			ResumeFromPath:           options.Migrate.ResumeFromPath,
 		},
 		MinConsistencyScore:    options.MinConsistencyScore,
 		MaxFingerprintDistance: options.MaxFingerprintDistance,
@@ -198,6 +196,23 @@ func runMigrateAndVerifyWithSteps(ctx context.Context, args []string, steps migr
 		return result, fullRecordErr
 	}
 	return result, nil
+}
+
+func validateMigrateAndVerifyStrictCount(ctx context.Context, options migrateAndVerifyOptions, steps migrateAndVerifySteps, migrationResult migration.VectorMigrationResult) error {
+	if !options.StrictCount {
+		return nil
+	}
+	if options.Migrate.ResumeFromPath != "" {
+		return errors.New("strict-count cannot be combined with resume-from")
+	}
+	targetCount, err := steps.CountTarget(ctx, options)
+	if err != nil {
+		return err
+	}
+	if targetCount != int64(migrationResult.RecordsWritten) {
+		return fmt.Errorf("strict count mismatch: records_written=%d target_count=%d", migrationResult.RecordsWritten, targetCount)
+	}
+	return nil
 }
 
 type migrateAndVerifyFullRecordPaths struct {
@@ -279,6 +294,8 @@ func parseMigrateAndVerifyOptions(args []string) (migrateAndVerifyOptions, error
 	var pgvectorIDColumn string
 	var pgvectorVectorColumn string
 	var recordMappingPath string
+	var checkpointPath string
+	var resumeFromPath string
 	var artifactDir string
 	var jobID string
 	var dimension int
@@ -303,6 +320,8 @@ func parseMigrateAndVerifyOptions(args []string) (migrateAndVerifyOptions, error
 	flagSet.StringVar(&pgvectorIDColumn, "pgvector-id-column", "id", "pgvector ID column")
 	flagSet.StringVar(&pgvectorVectorColumn, "pgvector-vector-column", "embedding", "pgvector vector column")
 	flagSet.StringVar(&recordMappingPath, "record-mapping", "", "optional map-migration-records JSON path for full-record migration")
+	flagSet.StringVar(&checkpointPath, "checkpoint-path", "", "optional checkpoint JSON path for batch migration progress")
+	flagSet.StringVar(&resumeFromPath, "resume-from", "", "optional checkpoint JSON path to resume from")
 	flagSet.StringVar(&artifactDir, "artifact-dir", "", "directory to write source, target, and comparison artifacts")
 	flagSet.StringVar(&jobID, "job-id", "migrate-and-verify", "job id used for artifact filenames")
 	flagSet.IntVar(&dimension, "dimension", 0, "vector dimension to validate during migration")
@@ -320,6 +339,9 @@ func parseMigrateAndVerifyOptions(args []string) (migrateAndVerifyOptions, error
 	if err := flagSet.Parse(args); err != nil {
 		return migrateAndVerifyOptions{}, err
 	}
+	if strictCount && resumeFromPath != "" {
+		return migrateAndVerifyOptions{}, errors.New("strict-count cannot be combined with resume-from")
+	}
 	if err := validateMigrateAndVerifyFields(fixturePath, milvusAddress, pgvectorConnectionURL, artifactDir, jobID, dimension, batchSize, topK, expandK, stableK, boundaryK, metric); err != nil {
 		return migrateAndVerifyOptions{}, err
 	}
@@ -328,6 +350,12 @@ func parseMigrateAndVerifyOptions(args []string) (migrateAndVerifyOptions, error
 	}
 	if fullRecordCompare && recordMappingPath == "" {
 		return migrateAndVerifyOptions{}, errors.New("record-mapping is required when full-record-compare is enabled")
+	}
+	if checkpointPath == "" && resumeFromPath != "" {
+		checkpointPath = resumeFromPath
+	}
+	if resetTarget && resumeFromPath != "" {
+		return migrateAndVerifyOptions{}, errors.New("reset-target cannot be combined with resume-from")
 	}
 	return migrateAndVerifyOptions{
 		FixturePath: fixturePath,
@@ -345,11 +373,17 @@ func parseMigrateAndVerifyOptions(args []string) (migrateAndVerifyOptions, error
 				VectorColumn:  pgvectorVectorColumn,
 			},
 			RecordMappingPath: recordMappingPath,
+			CheckpointPath:    checkpointPath,
+			ResumeFromPath:    resumeFromPath,
 			MigrationConfig: migration.VectorMigrationConfig{
-				SourceCollection: sourceCollection,
-				TargetTable:      targetTable,
-				Dimension:        dimension,
-				BatchSize:        batchSize,
+				SourceCollection:  sourceCollection,
+				TargetTable:       targetTable,
+				Dimension:         dimension,
+				BatchSize:         batchSize,
+				CheckpointPath:    checkpointPath,
+				ResumeFromPath:    resumeFromPath,
+				JobID:             jobID,
+				RecordMappingPath: recordMappingPath,
 			},
 		},
 		ArtifactDir:            artifactDir,
@@ -376,11 +410,10 @@ func (realMigrateAndVerifySteps) ResetTarget(ctx context.Context, options migrat
 }
 
 func (realMigrateAndVerifySteps) Migrate(ctx context.Context, options migrateOptions) (migration.VectorMigrationResult, error) {
-	mapping, err := loadMigrateRecordMapping(options)
-	if err != nil {
+	if err := prepareMigrateMappingAndResume(&options); err != nil {
 		return migration.VectorMigrationResult{}, err
 	}
-	runner, err := newMigrateRunner(options.MilvusConfig, options.PGVectorConfig, options.MigrationConfig, mapping)
+	runner, err := newMigrateRunner(options.MilvusConfig, options.PGVectorConfig, options.MigrationConfig, options.Mapping)
 	if err != nil {
 		return migration.VectorMigrationResult{}, err
 	}

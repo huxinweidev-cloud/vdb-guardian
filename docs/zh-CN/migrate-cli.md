@@ -26,6 +26,7 @@ go run ./cmd/vdbg migrate \
   --schema-plan /tmp/vdb-guardian-pgvector-schema-plan.json \
   --live-schema /tmp/vdb-guardian-live-pgvector-schema.json \
   --record-mapping /tmp/vdb-guardian-record-mapping.json \
+  --checkpoint-path /tmp/vdb-guardian-migration-checkpoint.json \
   --output /tmp/vdb-guardian-migration-report.json \
   --job-id migration-smoke
 ```
@@ -43,7 +44,7 @@ records_read: 100
 records_written: 100
 ```
 
-当提供 `--output` 时，命令还会写出机器可读 JSON report，文件权限为 `0600`。该 report 会记录 job id、源集合、目标表、schema preflight 状态、可选 record-mapping summary metadata、向量维度、读取记录数和写入记录数，但不会包含 PostgreSQL 连接 URL。
+当提供 `--output` 时，命令还会写出机器可读 JSON report，文件权限为 `0600`。该 report 会记录 job id、源集合、目标表、schema preflight 状态、可选 record-mapping summary metadata、可选 checkpoint summary、向量维度、读取记录数和写入记录数，但不会包含 PostgreSQL 连接 URL。
 
 迁移前如需验证 full-record mapping，请先对同一 schema plan 运行 `vdbg map-migration-records`。该命令只读取本地 artifact，不连接 Milvus 或 PostgreSQL。
 
@@ -81,6 +82,36 @@ go run ./cmd/vdbg migrate \
 
 启用 `--require-schema-match` 时，必须同时提供 `--schema-plan` 和 `--live-schema`。该命令复用 `vdbg compare-applied-schema` 的 artifact-only 对比逻辑；如果存在 blocking drift，迁移不会启动。
 
+## 可选 checkpoint / resume
+
+使用 `--checkpoint-path` 可以在每个成功的 pgvector 写入批次后写出批次级进度；如果某个写入批次失败，也会先写出 failed checkpoint 再返回错误：
+
+```bash
+go run ./cmd/vdbg migrate \
+  --milvus-address localhost:19530 \
+  --pgvector-connection-url '[REDACTED]' \
+  --dimension 1536 \
+  --batch-size 1000 \
+  --checkpoint-path /secure/artifacts/migration-checkpoint.json
+```
+
+使用 `--resume-from` 可以从 failed 或 running checkpoint 继续：
+
+```bash
+go run ./cmd/vdbg migrate \
+  --milvus-address localhost:19530 \
+  --pgvector-connection-url '[REDACTED]' \
+  --dimension 1536 \
+  --batch-size 1000 \
+  --resume-from /secure/artifacts/migration-checkpoint.json
+```
+
+如果提供 `--resume-from` 但没有提供 `--checkpoint-path`，命令会把后续进度继续写回同一个 checkpoint 文件。Resume 校验会 fail closed：当 checkpoint 中的源集合、目标表、维度、batch size、schema-plan fingerprint、record-mapping fingerprint 或状态不安全时，会拒绝继续。已经 completed 的 checkpoint 不能用于 resume。
+
+Checkpoint 文件权限为 `0600`。其中只包含非敏感的迁移身份、记录计数、完成/失败批次范围和 resume offset；不会包含 PostgreSQL connection URL、凭据、token、原始向量或行 payload。
+
+MVP 限制：源端 Milvus reader 仍会先读取源结果集，然后再执行 pgvector 批量写入。当前 checkpoint 保护的是目标端写入批次进度和 resume offset；source cursor/page-level streaming 仍是后续工作。
+
 ## 必填标志 (Required flags)
 
 - `--milvus-address`: Milvus gRPC 终端点，例如 `localhost:19530`。
@@ -93,8 +124,10 @@ go run ./cmd/vdbg migrate \
 - `--schema-plan`: pgvector schema plan JSON 路径。启用 `--require-schema-match` 时必填。
 - `--live-schema`: live pgvector schema inspection JSON 路径。启用 `--require-schema-match` 时必填。
 - `--record-mapping`: 可选的 `vdbg map-migration-records` JSON 路径，用于 mapping-driven full-record migration。artifact 必须为 `status: pass`，且只能包含一个 collection mapping。
+- `--checkpoint-path`: 可选的 migration checkpoint JSON 路径，文件权限为 `0600`。
+- `--resume-from`: 可选的 checkpoint JSON 路径。若省略 `--checkpoint-path`，后续进度会默认写回同一个文件。
 - `--output`: 可选的 migration result report JSON 输出路径，文件权限为 `0600`。
-- `--job-id`: 写入 migration result report 的可选任务标识。
+- `--job-id`: 写入 migration result report 和 checkpoint artifact 的可选任务标识。
 
 ## 默认值 (Defaults)
 
@@ -119,14 +152,14 @@ go run ./cmd/vdbg migrate \
 - 通过 `--require-schema-match` 可选执行 planned-vs-live schema preflight。
 - 通过 `--output` 可选写出机器可读 migration result JSON report。
 - 通过 `--record-mapping` 可选执行 mapping-driven full-record migration，从通过校验的本地 mapping artifact 迁移 scalar 字段、dynamic metadata 和 partition metadata。
+- 通过 `--checkpoint-path` 和 `--resume-from` 可选执行 batch-level checkpoint/resume。
 - 包含已读取和已写入记录数的摘要输出。
 
 尚未实现：
 
 - 在此命令内生成源/目标指纹产物。
 - 在此命令内生成比较结果产物。
-- full-record equality comparison。
-- 增量检查点 (Checkpoints)。
+- 在此命令内执行 full-record equality comparison；如需编排式 gate，请使用 `vdbg migrate-and-verify --full-record-compare`。
 - 生产环境级别的批量导入 (Bulk import)。
 
 ## 安全提示
@@ -139,11 +172,14 @@ pgvector 写入器采用 upsert 语义：
 INSERT ... ON CONFLICT (id) DO UPDATE
 ```
 
-它**不会**删除目标表。如果目标表中包含 Milvus 源中不存在的旧记录，这个首个 MVP 版本的命令不会将其删除。
+它**不会**删除目标表。如果目标表中包含 Milvus 源中不存在的旧记录，这个命令不会将其删除。
+
+Checkpoint 和 report artifact 可能包含 collection/table 名称、ID/range 和 artifact 路径。请只写入经过批准的安全目录，不要把生成的 artifact 内容贴到聊天或日志里。不要把凭据或 connection URL 放进 checkpoint 路径或 job id。
 
 ## 测试命令
 
 ```bash
+go test ./internal/migration -run 'Test.*Checkpoint|Test.*Resume|TestVectorMigrationRunner' -v
 go test ./cmd/vdbg -run 'TestParseMigrate|TestRunMigrate' -v
 ```
 

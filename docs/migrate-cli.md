@@ -26,6 +26,7 @@ go run ./cmd/vdbg migrate \
   --schema-plan /tmp/vdb-guardian-pgvector-schema-plan.json \
   --live-schema /tmp/vdb-guardian-live-pgvector-schema.json \
   --record-mapping /tmp/vdb-guardian-record-mapping.json \
+  --checkpoint-path /tmp/vdb-guardian-migration-checkpoint.json \
   --output /tmp/vdb-guardian-migration-report.json \
   --job-id migration-smoke
 ```
@@ -43,7 +44,7 @@ records_read: 100
 records_written: 100
 ```
 
-When `--output` is provided, the command also writes a machine-readable JSON report with `0600` permissions. The report records the job id, source collection, target table, schema preflight status, optional record-mapping summary metadata, dimension, records read, and records written. It never includes the PostgreSQL connection URL.
+When `--output` is provided, the command also writes a machine-readable JSON report with `0600` permissions. The report records the job id, source collection, target table, schema preflight status, optional record-mapping summary metadata, optional checkpoint summary, dimension, records read, and records written. It never includes the PostgreSQL connection URL.
 
 For pre-migration full-record mapping validation, run `vdbg map-migration-records` against the same schema plan before execution. That command is local-artifact only and does not connect to Milvus or PostgreSQL.
 
@@ -81,6 +82,36 @@ go run ./cmd/vdbg migrate \
 
 With `--require-schema-match`, both `--schema-plan` and `--live-schema` are required. The command reuses the same artifact-only comparison as `vdbg compare-applied-schema`; if blocking drift exists, migration does not start.
 
+## Optional checkpoint / resume
+
+Use `--checkpoint-path` to write batch-level progress after every successful pgvector write batch and after a failed write batch before the command returns an error:
+
+```bash
+go run ./cmd/vdbg migrate \
+  --milvus-address localhost:19530 \
+  --pgvector-connection-url '[REDACTED]' \
+  --dimension 1536 \
+  --batch-size 1000 \
+  --checkpoint-path /secure/artifacts/migration-checkpoint.json
+```
+
+Resume from a failed or running checkpoint with `--resume-from`:
+
+```bash
+go run ./cmd/vdbg migrate \
+  --milvus-address localhost:19530 \
+  --pgvector-connection-url '[REDACTED]' \
+  --dimension 1536 \
+  --batch-size 1000 \
+  --resume-from /secure/artifacts/migration-checkpoint.json
+```
+
+If `--resume-from` is supplied without `--checkpoint-path`, the command writes updated progress back to the same checkpoint file. Resume validation fails closed when the checkpoint source collection, target table, dimension, batch size, schema-plan fingerprint, record-mapping fingerprint, or status is unsafe. Completed checkpoints are not accepted for resume.
+
+Checkpoint files are written with `0600` permissions. They contain non-secret migration identity, record counts, completed/failed batch ranges, and resume offsets. They never contain PostgreSQL connection URLs, credentials, tokens, raw vectors, or row payloads.
+
+MVP limitation: the source Milvus reader still loads the source result set before pgvector batch writes. Checkpointing currently protects target write batch progress and resume offset; source cursor/page-level streaming remains future work.
+
 ## Required flags
 
 - `--milvus-address`: Milvus gRPC endpoint, for example `localhost:19530`.
@@ -93,8 +124,10 @@ With `--require-schema-match`, both `--schema-plan` and `--live-schema` are requ
 - `--schema-plan`: pgvector schema plan JSON path. Required when `--require-schema-match` is set.
 - `--live-schema`: live pgvector schema inspection JSON path. Required when `--require-schema-match` is set.
 - `--record-mapping`: optional `vdbg map-migration-records` JSON path for mapping-driven full-record migration. The artifact must have `status: pass` and exactly one collection mapping.
+- `--checkpoint-path`: optional migration checkpoint JSON path. Written with `0600` permissions.
+- `--resume-from`: optional checkpoint JSON path to resume from. Defaults `--checkpoint-path` to the same file when `--checkpoint-path` is omitted.
 - `--output`: optional migration result report JSON path. Written with `0600` permissions.
-- `--job-id`: optional identifier included in the migration result report.
+- `--job-id`: optional identifier included in the migration result report and checkpoint artifact.
 
 ## Defaults
 
@@ -119,14 +152,14 @@ Implemented:
 - Optional planned-vs-live schema preflight via `--require-schema-match`.
 - Optional machine-readable migration result JSON report via `--output`.
 - Optional mapping-driven full-record execution via `--record-mapping`, including scalar fields, dynamic metadata, and partition metadata from a passing local mapping artifact.
+- Optional batch-level checkpoint and resume via `--checkpoint-path` and `--resume-from`.
 - Summary output for records read and written.
 
 Not implemented yet:
 
 - Source/target fingerprint artifact generation inside this command.
 - Comparison result artifact generation inside this command.
-- Full-record equality comparison.
-- Incremental checkpoints.
+- Full-record equality comparison inside this command; use `vdbg migrate-and-verify --full-record-compare` for the orchestrated gate.
 - Production bulk import.
 
 ## Safety notes
@@ -139,11 +172,14 @@ The pgvector writer uses upsert semantics:
 INSERT ... ON CONFLICT (id) DO UPDATE
 ```
 
-It does not drop the target table. If the target table contains old records not present in the Milvus source, this first MVP command does not delete them.
+It does not drop the target table. If the target table contains old records not present in the Milvus source, this command does not delete them.
+
+Checkpoint and report artifacts may contain collection names, table names, IDs/ranges, and artifact paths. Store them only in approved secured locations and keep generated artifacts out of chat/log output. Do not put credentials or connection URLs into checkpoint paths or job ids.
 
 ## Test command
 
 ```bash
+go test ./internal/migration -run 'Test.*Checkpoint|Test.*Resume|TestVectorMigrationRunner' -v
 go test ./cmd/vdbg -run 'TestParseMigrate|TestRunMigrate' -v
 ```
 

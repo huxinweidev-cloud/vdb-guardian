@@ -77,6 +77,68 @@ func TestParseMigrateOptionsWithSchemaPreflightAndOutput(t *testing.T) {
 	}
 }
 
+func TestParseMigrateOptionsWithCheckpointAndResume(t *testing.T) {
+	options, err := parseMigrateOptions([]string{
+		"--milvus-address", "localhost:19530",
+		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--dimension", "8",
+		"--checkpoint-path", "/tmp/checkpoint.json",
+		"--resume-from", "/tmp/checkpoint.json",
+	})
+	if err != nil {
+		t.Fatalf("parseMigrateOptions returned error: %v", err)
+	}
+	if options.CheckpointPath != "/tmp/checkpoint.json" || options.ResumeFromPath != "/tmp/checkpoint.json" {
+		t.Fatalf("unexpected checkpoint options: %+v", options)
+	}
+	if options.MigrationConfig.CheckpointPath != "/tmp/checkpoint.json" || options.MigrationConfig.ResumeFromPath != "/tmp/checkpoint.json" {
+		t.Fatalf("unexpected migration checkpoint config: %+v", options.MigrationConfig)
+	}
+}
+
+func TestRunMigrateLoadsAndValidatesResumeCheckpoint(t *testing.T) {
+	dir := t.TempDir()
+	checkpointPath := filepath.Join(dir, "checkpoint.json")
+	checkpoint := migration.BuildVectorMigrationCheckpoint(migration.VectorMigrationCheckpointInput{Status: migration.VectorMigrationCheckpointStatusFailed, SourceCollection: "items", TargetTable: "items", Dimension: 8, BatchSize: 100, RecordsRead: 100, RecordsWritten: 100, CompletedBatches: []migration.VectorMigrationCheckpointBatch{{Index: 0, Start: 0, End: 100, RecordsWritten: 100}}, Resume: migration.VectorMigrationCheckpointResume{NextBatchIndex: 1, NextRecordOffset: 100}})
+	if err := migration.WriteVectorMigrationCheckpoint(checkpointPath, checkpoint); err != nil {
+		t.Fatalf("write checkpoint fixture: %v", err)
+	}
+	fake := &fakeMigrateRunner{}
+	err := runMigrateWithFactory(context.Background(), []string{
+		"--milvus-address", "localhost:19530",
+		"--source-collection", "items",
+		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--target-table", "items",
+		"--dimension", "8",
+		"--resume-from", checkpointPath,
+	}, fake.newRunner)
+	if err != nil {
+		t.Fatalf("runMigrateWithFactory returned error: %v", err)
+	}
+	if fake.config.ResumeCheckpoint == nil || fake.config.ResumeCheckpoint.Resume.NextRecordOffset != 100 {
+		t.Fatalf("resume checkpoint not passed to runner: %+v", fake.config)
+	}
+	if fake.config.CheckpointPath != checkpointPath {
+		t.Fatalf("checkpoint path should default to resume file, got %q", fake.config.CheckpointPath)
+	}
+}
+
+func TestRunMigrateRejectsMissingResumeCheckpointBeforeFactory(t *testing.T) {
+	fake := &fakeMigrateRunner{}
+	err := runMigrateWithFactory(context.Background(), []string{
+		"--milvus-address", "localhost:19530",
+		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--dimension", "8",
+		"--resume-from", filepath.Join(t.TempDir(), "missing.json"),
+	}, fake.newRunner)
+	if err == nil || !strings.Contains(err.Error(), "read vector migration checkpoint") {
+		t.Fatalf("expected missing checkpoint error, got %v", err)
+	}
+	if fake.migrated || fake.config.Dimension != 0 {
+		t.Fatalf("factory should not run on missing resume checkpoint: %+v", fake)
+	}
+}
+
 func TestParseMigrateOptionsWithRecordMapping(t *testing.T) {
 	options, err := parseMigrateOptions([]string{
 		"--milvus-address", "localhost:19530",

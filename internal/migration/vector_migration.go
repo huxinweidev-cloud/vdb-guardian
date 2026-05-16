@@ -14,19 +14,28 @@ var vectorMigrationIdentifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_
 
 // VectorMigrationConfig controls the minimal Milvus-to-pgvector record transfer.
 //
-// The first migration runner keeps only the boundaries required for a runnable
-// MVP: one source collection, one target table, one fixed vector dimension, and
-// a simple batch size for record transfer. Metadata mapping, partitions, and
-// incremental checkpoints are intentionally deferred.
+// The current runner supports one source collection, one target table, one fixed
+// vector dimension, a simple batch size for record transfer, and checkpointed
+// target write batch progress. Source-side cursor streaming, production bulk
+// import, and stale-row reconciliation remain future increments.
 //
 // VectorMigrationConfig 控制着最小化的 Milvus 到 pgvector 记录迁移流程。
-// 首个迁移运行器仅保留 MVP 所需的边界：一个源集合、一个目标表、一个固定向量维度，
-// 以及一个用于批量转移记录的简单批大小。元数据映射、分区以及增量检查点功能都被有意延后。
+// 当前迁移运行器支持一个源集合、一个目标表、一个固定向量维度、简单批大小，
+// 以及目标端写入批次的 checkpoint 进度。源端 cursor streaming、生产级 bulk import
+// 和 stale-row reconciliation 仍属于后续增量。
 type VectorMigrationConfig struct {
-	SourceCollection string
-	TargetTable      string
-	Dimension        int
-	BatchSize        int
+	SourceCollection         string
+	TargetTable              string
+	Dimension                int
+	BatchSize                int
+	CheckpointPath           string
+	ResumeFromPath           string
+	JobID                    string
+	SchemaPlanPath           string
+	RecordMappingPath        string
+	SchemaPlanFingerprint    string
+	RecordMappingFingerprint string
+	ResumeCheckpoint         *VectorMigrationCheckpoint
 }
 
 // VectorMigrationRecord is the normalized record model transferred between the
@@ -70,6 +79,27 @@ type vectorMigrationTarget interface {
 	WriteRecords(ctx context.Context, table string, records []VectorMigrationRecord) error
 }
 
+type vectorMigrationCheckpointStore interface {
+	Save(ctx context.Context, checkpoint VectorMigrationCheckpoint) error
+}
+
+type fileVectorMigrationCheckpointStore struct {
+	path string
+}
+
+func (s fileVectorMigrationCheckpointStore) Save(ctx context.Context, checkpoint VectorMigrationCheckpoint) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return WriteVectorMigrationCheckpoint(s.path, checkpoint)
+}
+
+type noopVectorMigrationCheckpointStore struct{}
+
+func (noopVectorMigrationCheckpointStore) Save(context.Context, VectorMigrationCheckpoint) error {
+	return nil
+}
+
 // VectorMigrationRunner transfers normalized records from a source reader into a
 // target writer using a fixed vector dimension.
 //
@@ -81,9 +111,10 @@ type vectorMigrationTarget interface {
 // 该运行器有意不承担连接器发现或数据库特定 SQL/SDK 行为；它只验证迁移契约、复制记录，
 // 并把具体的读写职责委托给注入的源/目标边界。
 type VectorMigrationRunner struct {
-	config VectorMigrationConfig
-	source vectorMigrationSource
-	target vectorMigrationTarget
+	config          VectorMigrationConfig
+	source          vectorMigrationSource
+	target          vectorMigrationTarget
+	checkpointStore vectorMigrationCheckpointStore
 }
 
 // NewVectorMigrationRunner validates configuration and returns a minimal
@@ -91,11 +122,25 @@ type VectorMigrationRunner struct {
 //
 // NewVectorMigrationRunner 校验配置，并返回一个最小化的 Milvus 到 pgvector 迁移运行器。
 func NewVectorMigrationRunner(config VectorMigrationConfig, source vectorMigrationSource, target vectorMigrationTarget) (VectorMigrationRunner, error) {
+	store := vectorMigrationCheckpointStore(noopVectorMigrationCheckpointStore{})
+	if config.CheckpointPath != "" {
+		store = fileVectorMigrationCheckpointStore{path: config.CheckpointPath}
+	}
+	return NewVectorMigrationRunnerWithCheckpointStore(config, source, target, store)
+}
+
+// NewVectorMigrationRunnerWithCheckpointStore validates configuration and returns
+// a migration runner that persists batch-level checkpoints through the supplied
+// store. Tests inject an in-memory store; CLI callers normally use a file store.
+func NewVectorMigrationRunnerWithCheckpointStore(config VectorMigrationConfig, source vectorMigrationSource, target vectorMigrationTarget, checkpointStore vectorMigrationCheckpointStore) (VectorMigrationRunner, error) {
 	config = applyVectorMigrationDefaults(config)
 	if err := validateVectorMigrationConfig(config, source, target); err != nil {
 		return VectorMigrationRunner{}, err
 	}
-	return VectorMigrationRunner{config: config, source: source, target: target}, nil
+	if checkpointStore == nil {
+		checkpointStore = noopVectorMigrationCheckpointStore{}
+	}
+	return VectorMigrationRunner{config: config, source: source, target: target, checkpointStore: checkpointStore}, nil
 }
 
 // Migrate reads records from the source collection and writes them to the target table.
@@ -116,17 +161,82 @@ func (r VectorMigrationRunner) Migrate(ctx context.Context) (VectorMigrationResu
 	if err := validateVectorMigrationRecords(r.config, records); err != nil {
 		return VectorMigrationResult{}, err
 	}
-	copied := copyVectorMigrationRecords(records)
-	if err := r.target.WriteRecords(ctx, r.config.TargetTable, copied); err != nil {
-		return VectorMigrationResult{}, fmt.Errorf("write target records: %w", err)
+	resumeOffset, completedBatches, recordsWritten := r.resumeState()
+	if resumeOffset > len(records) {
+		return VectorMigrationResult{}, fmt.Errorf("resume offset %d exceeds source record count %d", resumeOffset, len(records))
+	}
+	for start := resumeOffset; start < len(records); start += r.config.BatchSize {
+		end := start + r.config.BatchSize
+		if end > len(records) {
+			end = len(records)
+		}
+		batchIndex := start / r.config.BatchSize
+		copied := copyVectorMigrationRecords(records[start:end])
+		if err := r.target.WriteRecords(ctx, r.config.TargetTable, copied); err != nil {
+			failed := VectorMigrationCheckpointBatch{Index: batchIndex, Start: start, End: end, Error: SanitizeVectorMigrationCheckpointError(err)}
+			checkpoint := r.buildCheckpoint(VectorMigrationCheckpointStatusFailed, len(records), recordsWritten, completedBatches, []VectorMigrationCheckpointBatch{failed}, batchIndex, start)
+			if saveErr := r.checkpointStore.Save(ctx, checkpoint); saveErr != nil {
+				return VectorMigrationResult{}, fmt.Errorf("write failed checkpoint: %w", saveErr)
+			}
+			return VectorMigrationResult{}, fmt.Errorf("write target records: %w", err)
+		}
+		recordsWritten += len(copied)
+		completedBatches = append(completedBatches, VectorMigrationCheckpointBatch{Index: batchIndex, Start: start, End: end, RecordsWritten: len(copied)})
+		checkpoint := r.buildCheckpoint(VectorMigrationCheckpointStatusRunning, len(records), recordsWritten, completedBatches, nil, batchIndex+1, end)
+		if err := r.checkpointStore.Save(ctx, checkpoint); err != nil {
+			return VectorMigrationResult{}, fmt.Errorf("write running checkpoint: %w", err)
+		}
+	}
+	checkpoint := r.buildCheckpoint(VectorMigrationCheckpointStatusCompleted, len(records), recordsWritten, completedBatches, nil, len(completedBatches), len(records))
+	if err := r.checkpointStore.Save(ctx, checkpoint); err != nil {
+		return VectorMigrationResult{}, fmt.Errorf("write completed checkpoint: %w", err)
 	}
 	return VectorMigrationResult{
 		SourceCollection: r.config.SourceCollection,
 		TargetTable:      r.config.TargetTable,
 		Dimension:        r.config.Dimension,
 		RecordsRead:      len(records),
-		RecordsWritten:   len(copied),
+		RecordsWritten:   recordsWritten - r.resumeWrittenCount(),
 	}, nil
+}
+
+func (r VectorMigrationRunner) resumeState() (int, []VectorMigrationCheckpointBatch, int) {
+	if r.config.ResumeCheckpoint == nil {
+		return 0, nil, 0
+	}
+	checkpoint := *r.config.ResumeCheckpoint
+	completed := append([]VectorMigrationCheckpointBatch(nil), checkpoint.CompletedBatches...)
+	return checkpoint.Resume.NextRecordOffset, completed, checkpoint.RecordsWritten
+}
+
+func (r VectorMigrationRunner) resumeWrittenCount() int {
+	if r.config.ResumeCheckpoint == nil {
+		return 0
+	}
+	return r.config.ResumeCheckpoint.RecordsWritten
+}
+
+func (r VectorMigrationRunner) buildCheckpoint(status string, recordsRead int, recordsWritten int, completed []VectorMigrationCheckpointBatch, failed []VectorMigrationCheckpointBatch, nextBatchIndex int, nextOffset int) VectorMigrationCheckpoint {
+	return BuildVectorMigrationCheckpoint(VectorMigrationCheckpointInput{
+		JobID:            r.config.JobID,
+		Status:           status,
+		SourceCollection: r.config.SourceCollection,
+		TargetTable:      r.config.TargetTable,
+		Dimension:        r.config.Dimension,
+		BatchSize:        r.config.BatchSize,
+		RecordsRead:      recordsRead,
+		RecordsWritten:   recordsWritten,
+		CompletedBatches: completed,
+		FailedBatches:    failed,
+		Resume: VectorMigrationCheckpointResume{
+			NextBatchIndex:           nextBatchIndex,
+			NextRecordOffset:         nextOffset,
+			RecordMappingPath:        r.config.RecordMappingPath,
+			SchemaPlanPath:           r.config.SchemaPlanPath,
+			RecordMappingFingerprint: r.config.RecordMappingFingerprint,
+			SchemaPlanFingerprint:    r.config.SchemaPlanFingerprint,
+		},
+	})
 }
 
 func applyVectorMigrationDefaults(config VectorMigrationConfig) VectorMigrationConfig {

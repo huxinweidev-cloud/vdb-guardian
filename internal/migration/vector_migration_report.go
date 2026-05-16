@@ -12,17 +12,19 @@ type VectorMigrationReportOptions struct {
 	SchemaPreflight   bool
 	SchemaComparePath string
 	Mapping           *VectorMigrationReportMapping
+	Checkpoint        *VectorMigrationReportCheckpoint
 }
 
 type VectorMigrationReport struct {
-	SchemaVersion string                         `json:"schema_version"`
-	JobID         string                         `json:"job_id,omitempty"`
-	Status        string                         `json:"status"`
-	Source        VectorMigrationReportEndpoint  `json:"source"`
-	Target        VectorMigrationReportEndpoint  `json:"target"`
-	Preflight     VectorMigrationReportPreflight `json:"preflight"`
-	Mapping       *VectorMigrationReportMapping  `json:"mapping,omitempty"`
-	Summary       VectorMigrationReportSummary   `json:"summary"`
+	SchemaVersion string                           `json:"schema_version"`
+	JobID         string                           `json:"job_id,omitempty"`
+	Status        string                           `json:"status"`
+	Source        VectorMigrationReportEndpoint    `json:"source"`
+	Target        VectorMigrationReportEndpoint    `json:"target"`
+	Preflight     VectorMigrationReportPreflight   `json:"preflight"`
+	Mapping       *VectorMigrationReportMapping    `json:"mapping,omitempty"`
+	Checkpoint    *VectorMigrationReportCheckpoint `json:"checkpoint,omitempty"`
+	Summary       VectorMigrationReportSummary     `json:"summary"`
 }
 
 type VectorMigrationReportEndpoint struct {
@@ -52,6 +54,14 @@ type VectorMigrationReportMapping struct {
 	BlockingIssueCount            int    `json:"blocking_issue_count"`
 }
 
+type VectorMigrationReportCheckpoint struct {
+	Path             string `json:"path,omitempty"`
+	ResumeFrom       string `json:"resume_from,omitempty"`
+	CompletedBatches int    `json:"completed_batches"`
+	FailedBatches    int    `json:"failed_batches"`
+	NextRecordOffset int    `json:"next_record_offset"`
+}
+
 func BuildVectorMigrationReport(result VectorMigrationResult, options VectorMigrationReportOptions) VectorMigrationReport {
 	preflightStatus := "skipped"
 	if options.SchemaPreflight {
@@ -74,7 +84,8 @@ func BuildVectorMigrationReport(result VectorMigrationResult, options VectorMigr
 			SchemaComparePath:   options.SchemaComparePath,
 			SchemaCompareStatus: preflightStatus,
 		},
-		Mapping: options.Mapping,
+		Mapping:    options.Mapping,
+		Checkpoint: options.Checkpoint,
 		Summary: VectorMigrationReportSummary{
 			Dimension:      result.Dimension,
 			RecordsRead:    result.RecordsRead,

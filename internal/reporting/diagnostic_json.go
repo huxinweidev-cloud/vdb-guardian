@@ -28,6 +28,7 @@ type migrateAndVerifyDiagnosticJSON struct {
 	Artifacts          migrateAndVerifyDiagnosticArtifacts          `json:"artifacts"`
 	Safety             migrateAndVerifyDiagnosticSafety             `json:"safety"`
 	FullRecordEquality migrateAndVerifyDiagnosticFullRecordEquality `json:"full_record_equality"`
+	Checkpoint         migrateAndVerifyDiagnosticCheckpoint         `json:"checkpoint"`
 	QualityGates       migrateAndVerifyDiagnosticGates              `json:"quality_gates"`
 }
 
@@ -70,6 +71,11 @@ type migrateAndVerifyDiagnosticFullRecordEquality struct {
 	SourceArtifact string `json:"source_artifact,omitempty"`
 	TargetArtifact string `json:"target_artifact,omitempty"`
 	CompareReport  string `json:"compare_report,omitempty"`
+}
+
+type migrateAndVerifyDiagnosticCheckpoint struct {
+	Path       string `json:"path,omitempty"`
+	ResumeFrom string `json:"resume_from,omitempty"`
 }
 
 type migrateAndVerifyDiagnosticGates struct {
@@ -134,6 +140,10 @@ func RenderMigrateAndVerifyDiagnosticJSON(report MigrateAndVerifyDiagnosticRepor
 			SourceArtifact: report.SourceFullRecordPath,
 			TargetArtifact: report.TargetFullRecordPath,
 			CompareReport:  report.FullRecordComparePath,
+		},
+		Checkpoint: migrateAndVerifyDiagnosticCheckpoint{
+			Path:       report.CheckpointPath,
+			ResumeFrom: report.ResumeFromPath,
 		},
 		QualityGates: migrateAndVerifyDiagnosticGates{
 			MinConsistencyScore:    report.MinConsistencyScore,

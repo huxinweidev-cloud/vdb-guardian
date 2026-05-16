@@ -42,6 +42,7 @@ go run ./cmd/vdbg migrate-and-verify \
   --reset-target \
   --strict-count \
   --full-record-compare \
+  --checkpoint-path /tmp/vdb-guardian-run/migrate-and-verify-smoke-checkpoint.json \
   --min-consistency-score 0.999 \
   --max-fingerprint-distance 0.001
 ```
@@ -68,6 +69,15 @@ diagnostic_report: /tmp/vdb-guardian-run/migrate-and-verify-smoke-diagnostic-rep
 source_full_records: /tmp/vdb-guardian-run/migrate-and-verify-smoke-source-full-records.json
 target_full_records: /tmp/vdb-guardian-run/migrate-and-verify-smoke-target-full-records.json
 full_record_compare: /tmp/vdb-guardian-run/migrate-and-verify-smoke-full-record-compare.json
+```
+
+启用 checkpoint 后，Markdown 报告会包含 `Checkpoint / resume` 小节，diagnostic JSON 会包含：
+
+```json
+"checkpoint": {
+  "path": "/tmp/vdb-guardian-run/migrate-and-verify-smoke-checkpoint.json",
+  "resume_from": ""
+}
 ```
 
 ## 必填标志 (Required flags)
@@ -97,8 +107,42 @@ full_record_compare: /tmp/vdb-guardian-run/migrate-and-verify-smoke-full-record-
 - `--reset-target`: `false`。启用后会在迁移前清空 pgvector 目标表。
 - `--strict-count`: `false`。启用后，如果迁移后的 pgvector 目标表行数不等于 `records_written`，命令会失败。
 - `--full-record-compare`: `false`。启用后，会基于 `--record-mapping` 构建 Milvus/pgvector live full-record artifact，执行本地 `compare-full-records`，并在 Markdown / diagnostic JSON 中记录相关路径；即使 equality gate 失败，也会先保留诊断报告再返回非零错误。
+- `--checkpoint-path`: 空。启用后，迁移步骤会在每个成功的 pgvector 写入批次后写出 `0600` checkpoint；如果某个写入批次失败，也会先写出 failed checkpoint 再返回错误。
+- `--resume-from`: 空。启用后，迁移步骤会在创建真实数据库 runner 前加载并校验 checkpoint。如果省略 `--checkpoint-path`，后续进度会写回同一个 checkpoint 文件。
 - `--min-consistency-score`: `0`。生成报告后，如果 `consistency_score` 低于该阈值，命令会失败。
 - `--max-fingerprint-distance`: `1`。生成报告后，如果 `fingerprint_distance` 高于该阈值，命令会失败。
+
+## 可选 checkpoint / resume
+
+`migrate-and-verify` 会把 checkpoint/resume 参数透传给内部 migration 步骤，不改变 fingerprint 或 full-record compare 的语义：
+
+```bash
+go run ./cmd/vdbg migrate-and-verify \
+  --fixture testdata/migration/synthetic-small.json \
+  --milvus-address localhost:19530 \
+  --pgvector-connection-url '[REDACTED]' \
+  --artifact-dir /tmp/vdb-guardian-run \
+  --dimension 1536 \
+  --checkpoint-path /secure/artifacts/migrate-and-verify-checkpoint.json
+```
+
+恢复时，把 checkpoint artifact 通过 `--resume-from` 传回：
+
+```bash
+go run ./cmd/vdbg migrate-and-verify \
+  --fixture testdata/migration/synthetic-small.json \
+  --milvus-address localhost:19530 \
+  --pgvector-connection-url '[REDACTED]' \
+  --artifact-dir /tmp/vdb-guardian-run \
+  --dimension 1536 \
+  --resume-from /secure/artifacts/migrate-and-verify-checkpoint.json
+```
+
+Resume 校验会 fail closed：当 checkpoint 中的源集合、目标表、维度、batch size、schema-plan fingerprint、record-mapping fingerprint 或状态不安全时，会拒绝继续。已经 completed 的 checkpoint 不能用于 resume。`--reset-target` 不能与 `--resume-from` 同时使用；恢复迁移时不能在继续前清空目标表。
+
+Checkpoint 文件权限为 `0600`，只包含非敏感的迁移身份、记录计数、完成/失败批次范围和 resume offset；不会包含 PostgreSQL connection URL、凭据、token、原始向量或行 payload。
+
+MVP 限制：源端 Milvus reader 仍会先读取源结果集，然后再执行 pgvector 批量写入。当前 checkpoint 保护的是目标端写入批次进度和 resume offset；source cursor/page-level streaming 仍是后续工作。
 
 ## 支持范围 (Scope)
 
@@ -115,6 +159,7 @@ full_record_compare: /tmp/vdb-guardian-run/migrate-and-verify-smoke-full-record-
 - 可选 `--strict-count` 校验能力：迁移后目标表行数不匹配时直接失败。
 - 可选 `--min-consistency-score` 与 `--max-fingerprint-distance` 质量门禁：生成 Markdown 报告后，如果指标不达标则使命令失败。
 - 可选 `--full-record-compare` equality gate：基于同一个 passing record mapping artifact 构建 source/target full-record artifacts 并执行本地 equality compare。
+- 可选 `--checkpoint-path` 与 `--resume-from` 透传，用于 batch-level migration checkpoint/resume。
 - 为整体编排和失败短路（异常阻断）逻辑编写的注入式步骤单元测试。
 
 ## 本地冒烟验证示例
@@ -188,6 +233,10 @@ missing_target_queries: 0
     "target_artifact": "/tmp/vdb-guardian-run/migrate-and-verify-smoke-target-full-records.json",
     "compare_report": "/tmp/vdb-guardian-run/migrate-and-verify-smoke-full-record-compare.json"
   },
+  "checkpoint": {
+    "path": "/tmp/vdb-guardian-run/migrate-and-verify-smoke-checkpoint.json",
+    "resume_from": ""
+  },
   "quality_gates": {
     "min_consistency_score": 0.999,
     "max_fingerprint_distance": 0.001,
@@ -198,10 +247,10 @@ missing_target_queries: 0
 
 尚未实现：
 
-- 生产环境级别的断点续传 (Checkpointing)。
-- 元数据列映射。
-- Milvus 分区支持。
-- 自动清理源/目标端的无效数据。
+- source cursor/page-level streaming，即 resume 时无需重新读取源结果集。
+- 生产级 bulk import / COPY 路径。
+- 自动 stale target row cleanup / reconciliation。
+- 完整 Docker E2E checkpoint/resume 冒烟覆盖。
 
 ## 安全提示
 
@@ -211,16 +260,19 @@ Full-record compare artifacts 可能包含 record IDs、scalar 字段、dynamic 
 
 默认情况下，迁移步骤使用 pgvector 的 upsert 语义，且**不会删除**目标端陈旧的无效记录。对于一次性本地冒烟或临时测试库，可以传入 `--reset-target`，让命令在迁移前清空目标表。除非明确需要破坏性清理，否则不要在生产表上启用该选项。
 
+不要把 `--reset-target` 和 `--resume-from` 组合使用；命令会在迁移开始前拒绝该组合。
+
 如果需要在迁移后强制校验 pgvector 目标表行数必须等于 `records_written`，可以传入 `--strict-count`。该选项最适合与 `--reset-target` 组合用于干净的冒烟验证；如果不清理目标端，陈旧行可能会按预期触发 strict count 失败。
 
 如果要把该命令接入自动化质量门禁，可以传入 `--min-consistency-score` 和/或 `--max-fingerprint-distance`。这两个阈值会在 Markdown 报告写入之后再校验，因此失败的运行仍会留下可人工阅读的诊断报告。
 
-为了达成严苛的生产环境数据一致性，未来的迭代将引入显式的检查点语义，并加入对元数据/分区的全面支持。
+为了达成严苛的生产环境数据一致性，未来的迭代还需要加入源端 streaming cursor、bulk import 策略和 stale-row reconciliation。
 
 ## 测试命令
 
 ```bash
 go test ./cmd/vdbg -run 'TestParseMigrateAndVerify|TestRunMigrateAndVerify' -v
+go test ./internal/reporting -v
 ```
 
 提交前完整检查：

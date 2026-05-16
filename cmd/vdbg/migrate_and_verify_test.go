@@ -94,6 +94,79 @@ func TestParseMigrateAndVerifyOptionsParsesRecordMapping(t *testing.T) {
 	}
 }
 
+func TestParseMigrateAndVerifyOptionsParsesCheckpointAndResume(t *testing.T) {
+	options, err := parseMigrateAndVerifyOptions([]string{
+		"--fixture", "fixture.json",
+		"--milvus-address", "localhost:19530",
+		"--pgvector-connection-url", "local-placeholder",
+		"--artifact-dir", t.TempDir(),
+		"--dimension", "8",
+		"--checkpoint-path", "/tmp/migrate-checkpoint.json",
+		"--resume-from", "/tmp/previous-checkpoint.json",
+	})
+	if err != nil {
+		t.Fatalf("parseMigrateAndVerifyOptions returned error: %v", err)
+	}
+	if options.Migrate.CheckpointPath != "/tmp/migrate-checkpoint.json" || options.Migrate.ResumeFromPath != "/tmp/previous-checkpoint.json" {
+		t.Fatalf("unexpected checkpoint options: %+v", options.Migrate)
+	}
+	if options.Migrate.MigrationConfig.CheckpointPath != "/tmp/migrate-checkpoint.json" {
+		t.Fatalf("checkpoint path not forwarded to migration config: %+v", options.Migrate.MigrationConfig)
+	}
+}
+
+func TestParseMigrateAndVerifyOptionsDefaultsCheckpointToResumePath(t *testing.T) {
+	options, err := parseMigrateAndVerifyOptions([]string{
+		"--fixture", "fixture.json",
+		"--milvus-address", "localhost:19530",
+		"--pgvector-connection-url", "local-placeholder",
+		"--artifact-dir", t.TempDir(),
+		"--dimension", "8",
+		"--resume-from", "/tmp/migrate-checkpoint.json",
+	})
+	if err != nil {
+		t.Fatalf("parseMigrateAndVerifyOptions returned error: %v", err)
+	}
+	if options.Migrate.CheckpointPath != "/tmp/migrate-checkpoint.json" || options.Migrate.ResumeFromPath != "/tmp/migrate-checkpoint.json" {
+		t.Fatalf("unexpected checkpoint defaults: %+v", options.Migrate)
+	}
+}
+
+func TestParseMigrateAndVerifyOptionsRejectsResetTargetWithResume(t *testing.T) {
+	_, err := parseMigrateAndVerifyOptions([]string{
+		"--fixture", "fixture.json",
+		"--milvus-address", "localhost:19530",
+		"--pgvector-connection-url", "local-placeholder",
+		"--artifact-dir", t.TempDir(),
+		"--dimension", "8",
+		"--resume-from", "/tmp/migrate-checkpoint.json",
+		"--reset-target",
+	})
+	if err == nil || !strings.Contains(err.Error(), "reset-target") {
+		t.Fatalf("expected reset-target/resume validation error, got %v", err)
+	}
+}
+
+func TestRunMigrateAndVerifyPassesCheckpointOptionsToMigration(t *testing.T) {
+	artifactDir := t.TempDir()
+	fake := &fakeMigrateAndVerifySteps{}
+	_, err := runMigrateAndVerifyWithSteps(context.Background(), []string{
+		"--fixture", "fixture.json",
+		"--milvus-address", "localhost:19530",
+		"--pgvector-connection-url", "local-placeholder",
+		"--artifact-dir", artifactDir,
+		"--dimension", "8",
+		"--checkpoint-path", filepath.Join(artifactDir, "checkpoint.json"),
+		"--resume-from", filepath.Join(artifactDir, "checkpoint.json"),
+	}, fake)
+	if err != nil {
+		t.Fatalf("runMigrateAndVerifyWithSteps returned error: %v", err)
+	}
+	if fake.migrateCheckpointPath == "" || fake.migrateResumeFromPath == "" {
+		t.Fatalf("expected checkpoint options to reach migrate step: %+v", fake)
+	}
+}
+
 func TestParseMigrateAndVerifyOptionsParsesFullRecordCompare(t *testing.T) {
 	options, err := parseMigrateAndVerifyOptions([]string{
 		"--fixture", "fixture.json",
@@ -476,21 +549,23 @@ func TestRunMigrateAndVerifyStopsOnStepError(t *testing.T) {
 }
 
 type fakeMigrateAndVerifySteps struct {
-	calls               []string
-	resetTarget         bool
-	migrated            bool
-	sourceBuilt         bool
-	targetBuilt         bool
-	compared            bool
-	fullSourceBuilt     bool
-	fullTargetBuilt     bool
-	fullCompared        bool
-	targetCount         int64
-	resetErr            error
-	migrateErr          error
-	consistencyScore    float64
-	fingerprintDistance float64
-	fullCompareErr      error
+	calls                 []string
+	resetTarget           bool
+	migrated              bool
+	sourceBuilt           bool
+	targetBuilt           bool
+	compared              bool
+	fullSourceBuilt       bool
+	fullTargetBuilt       bool
+	fullCompared          bool
+	targetCount           int64
+	resetErr              error
+	migrateErr            error
+	consistencyScore      float64
+	fingerprintDistance   float64
+	fullCompareErr        error
+	migrateCheckpointPath string
+	migrateResumeFromPath string
 }
 
 func (f *fakeMigrateAndVerifySteps) ResetTarget(ctx context.Context, options migrateAndVerifyOptions) error {
@@ -514,6 +589,8 @@ func (f *fakeMigrateAndVerifySteps) Migrate(ctx context.Context, options migrate
 	}
 	f.calls = append(f.calls, "migrate")
 	f.migrated = true
+	f.migrateCheckpointPath = options.CheckpointPath
+	f.migrateResumeFromPath = options.ResumeFromPath
 	return migration.VectorMigrationResult{
 		SourceCollection: options.MigrationConfig.SourceCollection,
 		TargetTable:      options.MigrationConfig.TargetTable,

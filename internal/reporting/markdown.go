@@ -43,6 +43,10 @@ type MigrateAndVerifyReport struct {
 	TargetFullRecordPath string
 	// FullRecordComparePath points to the full-record equality report JSON when enabled.
 	FullRecordComparePath string
+	// CheckpointPath points to the migration checkpoint artifact when enabled.
+	CheckpointPath string
+	// ResumeFromPath points to the checkpoint artifact used to resume this run.
+	ResumeFromPath string
 }
 
 // RenderMigrateAndVerifyMarkdown renders a deterministic Markdown report for a
@@ -101,12 +105,8 @@ func RenderMigrateAndVerifyMarkdown(report MigrateAndVerifyReport) (string, erro
 	fmt.Fprintf(&builder, "- Target fingerprint: `%s`\n", report.TargetFingerprintPath)
 	fmt.Fprintf(&builder, "- Result JSON: `%s`\n\n", report.ResultPath)
 
-	if report.FullRecordCompareEnabled {
-		builder.WriteString("## Full-record equality\n\n")
-		fmt.Fprintf(&builder, "- Source full-record artifact: `%s`\n", report.SourceFullRecordPath)
-		fmt.Fprintf(&builder, "- Target full-record artifact: `%s`\n", report.TargetFullRecordPath)
-		fmt.Fprintf(&builder, "- Full-record compare report: `%s`\n\n", report.FullRecordComparePath)
-	}
+	writeMigrateAndVerifyFullRecordSection(&builder, report)
+	writeMigrateAndVerifyCheckpointSection(&builder, report)
 
 	builder.WriteString("## Safety notes\n\n")
 	if report.ResetTarget {
@@ -115,4 +115,28 @@ func RenderMigrateAndVerifyMarkdown(report MigrateAndVerifyReport) (string, erro
 		builder.WriteString("This run did not use `--reset-target`; pre-existing stale target rows may still require separate production cleanup or checkpoint semantics.\n")
 	}
 	return builder.String(), nil
+}
+
+func writeMigrateAndVerifyFullRecordSection(builder *strings.Builder, report MigrateAndVerifyReport) {
+	if !report.FullRecordCompareEnabled {
+		return
+	}
+	builder.WriteString("## Full-record equality\n\n")
+	fmt.Fprintf(builder, "- Source full-record artifact: `%s`\n", report.SourceFullRecordPath)
+	fmt.Fprintf(builder, "- Target full-record artifact: `%s`\n", report.TargetFullRecordPath)
+	fmt.Fprintf(builder, "- Full-record compare report: `%s`\n\n", report.FullRecordComparePath)
+}
+
+func writeMigrateAndVerifyCheckpointSection(builder *strings.Builder, report MigrateAndVerifyReport) {
+	if report.CheckpointPath == "" && report.ResumeFromPath == "" {
+		return
+	}
+	builder.WriteString("## Checkpoint / resume\n\n")
+	if report.CheckpointPath != "" {
+		fmt.Fprintf(builder, "- Checkpoint path: `%s`\n", report.CheckpointPath)
+	}
+	if report.ResumeFromPath != "" {
+		fmt.Fprintf(builder, "- Resume source: `%s`\n", report.ResumeFromPath)
+	}
+	builder.WriteString("\n")
 }

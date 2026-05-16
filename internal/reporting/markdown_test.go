@@ -22,6 +22,8 @@ func TestRenderMigrateAndVerifyMarkdownIncludesSummaryMetricsAndArtifacts(t *tes
 		SourceFullRecordPath:     "/tmp/run/mv-smoke-source-full-records.json",
 		TargetFullRecordPath:     "/tmp/run/mv-smoke-target-full-records.json",
 		FullRecordComparePath:    "/tmp/run/mv-smoke-full-record-compare.json",
+		CheckpointPath:           "/tmp/run/mv-smoke-checkpoint.json",
+		ResumeFromPath:           "/tmp/run/mv-smoke-checkpoint.json",
 		Migration: migration.VectorMigrationResult{
 			SourceCollection: "items",
 			TargetTable:      "items",
@@ -71,6 +73,9 @@ func TestRenderMigrateAndVerifyMarkdownIncludesSummaryMetricsAndArtifacts(t *tes
 		"- Source full-record artifact: `/tmp/run/mv-smoke-source-full-records.json`",
 		"- Target full-record artifact: `/tmp/run/mv-smoke-target-full-records.json`",
 		"- Full-record compare report: `/tmp/run/mv-smoke-full-record-compare.json`",
+		"## Checkpoint / resume",
+		"- Checkpoint path: `/tmp/run/mv-smoke-checkpoint.json`",
+		"- Resume source: `/tmp/run/mv-smoke-checkpoint.json`",
 		"This run used `--reset-target`",
 	} {
 		if !strings.Contains(report, want) {

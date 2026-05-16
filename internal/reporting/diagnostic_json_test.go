@@ -24,6 +24,8 @@ func TestRenderMigrateAndVerifyDiagnosticJSONIncludesMachineReadableRunContext(t
 			SourceFullRecordPath:     "/tmp/run/mv-smoke-source-full-records.json",
 			TargetFullRecordPath:     "/tmp/run/mv-smoke-target-full-records.json",
 			FullRecordComparePath:    "/tmp/run/mv-smoke-full-record-compare.json",
+			CheckpointPath:           "/tmp/run/mv-smoke-checkpoint.json",
+			ResumeFromPath:           "/tmp/run/mv-smoke-checkpoint.json",
 			Migration: migration.VectorMigrationResult{
 				SourceCollection: "items",
 				TargetTable:      "items",
@@ -89,6 +91,10 @@ func TestRenderMigrateAndVerifyDiagnosticJSONIncludesMachineReadableRunContext(t
 			TargetArtifact string `json:"target_artifact"`
 			CompareReport  string `json:"compare_report"`
 		} `json:"full_record_equality"`
+		Checkpoint struct {
+			Path       string `json:"path"`
+			ResumeFrom string `json:"resume_from"`
+		} `json:"checkpoint"`
 		QualityGates struct {
 			MinConsistencyScore    float64 `json:"min_consistency_score"`
 			MaxFingerprintDistance float64 `json:"max_fingerprint_distance"`
@@ -121,6 +127,9 @@ func TestRenderMigrateAndVerifyDiagnosticJSONIncludesMachineReadableRunContext(t
 	}
 	if !got.FullRecordEquality.Enabled || got.FullRecordEquality.SourceArtifact != "/tmp/run/mv-smoke-source-full-records.json" || got.FullRecordEquality.TargetArtifact != "/tmp/run/mv-smoke-target-full-records.json" || got.FullRecordEquality.CompareReport != "/tmp/run/mv-smoke-full-record-compare.json" {
 		t.Fatalf("unexpected full-record equality fields: %+v", got.FullRecordEquality)
+	}
+	if got.Checkpoint.Path != "/tmp/run/mv-smoke-checkpoint.json" || got.Checkpoint.ResumeFrom != "/tmp/run/mv-smoke-checkpoint.json" {
+		t.Fatalf("unexpected checkpoint fields: %+v", got.Checkpoint)
 	}
 	if got.QualityGates.MinConsistencyScore != 0.999 || got.QualityGates.MaxFingerprintDistance != 0.001 || !got.QualityGates.Passed {
 		t.Fatalf("unexpected quality gates: %+v", got.QualityGates)

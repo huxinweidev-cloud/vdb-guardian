@@ -21,6 +21,9 @@ type migrateOptions struct {
 	SchemaPlanPath     string
 	LiveSchemaPath     string
 	RecordMappingPath  string
+	Mapping            *migration.CollectionRecordMapping
+	CheckpointPath     string
+	ResumeFromPath     string
 	OutputPath         string
 	JobID              string
 }
@@ -51,11 +54,11 @@ func runMigrateWithFactory(ctx context.Context, args []string, factory func(conn
 	if preflightErr != nil {
 		return preflightErr
 	}
-	mapping, err := loadMigrateRecordMapping(options)
-	if err != nil {
-		return err
+	loadErr := prepareMigrateMappingAndResume(&options)
+	if loadErr != nil {
+		return loadErr
 	}
-	runner, err := factory(options.MilvusConfig, options.PGVectorConfig, options.MigrationConfig, mapping)
+	runner, err := factory(options.MilvusConfig, options.PGVectorConfig, options.MigrationConfig, options.Mapping)
 	if err != nil {
 		return err
 	}
@@ -73,6 +76,7 @@ func runMigrateWithFactory(ctx context.Context, args []string, factory func(conn
 		JobID:             options.JobID,
 		SchemaPreflight:   options.RequireSchemaMatch,
 		SchemaComparePath: options.SchemaPlanPath,
+		Checkpoint:        buildMigrateReportCheckpoint(options),
 	})); err != nil {
 		return err
 	}
@@ -80,15 +84,20 @@ func runMigrateWithFactory(ctx context.Context, args []string, factory func(conn
 }
 
 func writeMigrateReport(path string, report migration.VectorMigrationReport) error {
-	if path == "" {
+	return migration.WriteVectorMigrationReport(path, report)
+}
+
+func buildMigrateReportCheckpoint(options migrateOptions) *migration.VectorMigrationReportCheckpoint {
+	if options.CheckpointPath == "" && options.ResumeFromPath == "" {
 		return nil
 	}
-	data, err := json.MarshalIndent(report, "", "  ")
-	if err != nil {
-		return err
+	checkpoint := migration.VectorMigrationReportCheckpoint{Path: options.CheckpointPath, ResumeFrom: options.ResumeFromPath}
+	if options.MigrationConfig.ResumeCheckpoint != nil {
+		checkpoint.CompletedBatches = len(options.MigrationConfig.ResumeCheckpoint.CompletedBatches)
+		checkpoint.FailedBatches = len(options.MigrationConfig.ResumeCheckpoint.FailedBatches)
+		checkpoint.NextRecordOffset = options.MigrationConfig.ResumeCheckpoint.Resume.NextRecordOffset
 	}
-	data = append(data, '\n')
-	return os.WriteFile(path, data, 0o600)
+	return &checkpoint
 }
 
 func parseMigrateOptions(args []string) (migrateOptions, error) {
@@ -107,6 +116,8 @@ func parseMigrateOptions(args []string) (migrateOptions, error) {
 	var schemaPlanPath string
 	var liveSchemaPath string
 	var recordMappingPath string
+	var checkpointPath string
+	var resumeFromPath string
 	var outputPath string
 	var jobID string
 	var requireSchemaMatch bool
@@ -125,6 +136,8 @@ func parseMigrateOptions(args []string) (migrateOptions, error) {
 	flagSet.StringVar(&schemaPlanPath, "schema-plan", "", "path to pgvector schema plan JSON")
 	flagSet.StringVar(&liveSchemaPath, "live-schema", "", "path to live pgvector schema inspection JSON")
 	flagSet.StringVar(&recordMappingPath, "record-mapping", "", "optional map-migration-records JSON path for full-record migration")
+	flagSet.StringVar(&checkpointPath, "checkpoint-path", "", "optional checkpoint JSON path for batch migration progress")
+	flagSet.StringVar(&resumeFromPath, "resume-from", "", "optional checkpoint JSON path to resume from")
 	flagSet.StringVar(&outputPath, "output", "", "optional migration result report JSON output path")
 	flagSet.StringVar(&jobID, "job-id", "", "optional job id for the migration report")
 	if err := flagSet.Parse(args); err != nil {
@@ -142,11 +155,17 @@ func parseMigrateOptions(args []string) (migrateOptions, error) {
 	if batchSize <= 0 {
 		return migrateOptions{}, errors.New("batch-size must be positive")
 	}
+	if jobID == "" {
+		jobID = "migration"
+	}
 	if requireSchemaMatch && schemaPlanPath == "" {
 		return migrateOptions{}, errors.New("schema-plan is required when require-schema-match is set")
 	}
 	if requireSchemaMatch && liveSchemaPath == "" {
 		return migrateOptions{}, errors.New("live-schema is required when require-schema-match is set")
+	}
+	if checkpointPath == "" && resumeFromPath != "" {
+		checkpointPath = resumeFromPath
 	}
 	return migrateOptions{
 		MilvusConfig: connectors.MilvusConfig{
@@ -162,15 +181,22 @@ func parseMigrateOptions(args []string) (migrateOptions, error) {
 			VectorColumn:  pgvectorVectorColumn,
 		},
 		MigrationConfig: migration.VectorMigrationConfig{
-			SourceCollection: sourceCollection,
-			TargetTable:      targetTable,
-			Dimension:        dimension,
-			BatchSize:        batchSize,
+			SourceCollection:  sourceCollection,
+			TargetTable:       targetTable,
+			Dimension:         dimension,
+			BatchSize:         batchSize,
+			CheckpointPath:    checkpointPath,
+			ResumeFromPath:    resumeFromPath,
+			JobID:             jobID,
+			SchemaPlanPath:    schemaPlanPath,
+			RecordMappingPath: recordMappingPath,
 		},
 		RequireSchemaMatch: requireSchemaMatch,
 		SchemaPlanPath:     schemaPlanPath,
 		LiveSchemaPath:     liveSchemaPath,
 		RecordMappingPath:  recordMappingPath,
+		CheckpointPath:     checkpointPath,
+		ResumeFromPath:     resumeFromPath,
 		OutputPath:         outputPath,
 		JobID:              jobID,
 	}, nil
@@ -195,6 +221,53 @@ func runMigrateSchemaPreflight(options migrateOptions) error {
 	if report.Status == planschema.SchemaPlanCompareStatusFail {
 		return fmt.Errorf("schema preflight failed: planned schema does not match live schema")
 	}
+	return nil
+}
+
+func prepareMigrateMappingAndResume(options *migrateOptions) error {
+	if options.SchemaPlanPath != "" {
+		fingerprint, err := migration.FileSHA256Fingerprint(options.SchemaPlanPath)
+		if err != nil {
+			return fmt.Errorf("fingerprint schema plan: %w", err)
+		}
+		options.MigrationConfig.SchemaPlanFingerprint = fingerprint
+	}
+	mapping, err := loadMigrateRecordMapping(*options)
+	if err != nil {
+		return err
+	}
+	options.Mapping = mapping
+	if mapping != nil {
+		options.MigrationConfig.SourceCollection = mapping.SourceCollection
+		options.MigrationConfig.TargetTable = mapping.TargetTable
+		fingerprint, err := migration.FileSHA256Fingerprint(options.RecordMappingPath)
+		if err != nil {
+			return fmt.Errorf("fingerprint record mapping: %w", err)
+		}
+		options.MigrationConfig.RecordMappingFingerprint = fingerprint
+	}
+	return loadMigrateResumeCheckpoint(options)
+}
+
+func loadMigrateResumeCheckpoint(options *migrateOptions) error {
+	if options.ResumeFromPath == "" {
+		return nil
+	}
+	checkpoint, err := migration.ReadVectorMigrationCheckpoint(options.ResumeFromPath)
+	if err != nil {
+		return err
+	}
+	if err := migration.ValidateVectorMigrationResume(checkpoint, migration.VectorMigrationResumeExpectation{
+		SourceCollection:         options.MigrationConfig.SourceCollection,
+		TargetTable:              options.MigrationConfig.TargetTable,
+		Dimension:                options.MigrationConfig.Dimension,
+		BatchSize:                options.MigrationConfig.BatchSize,
+		RecordMappingFingerprint: options.MigrationConfig.RecordMappingFingerprint,
+		SchemaPlanFingerprint:    options.MigrationConfig.SchemaPlanFingerprint,
+	}); err != nil {
+		return fmt.Errorf("validate resume checkpoint: %w", err)
+	}
+	options.MigrationConfig.ResumeCheckpoint = &checkpoint
 	return nil
 }
 

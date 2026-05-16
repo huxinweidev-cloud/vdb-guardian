@@ -21,6 +21,13 @@ func TestBuildVectorMigrationReport(t *testing.T) {
 		JobID:             "migration-smoke",
 		SchemaPreflight:   true,
 		SchemaComparePath: "/tmp/schema-compare.json",
+		Checkpoint: &VectorMigrationReportCheckpoint{
+			Path:             "/tmp/checkpoint.json",
+			ResumeFrom:       "/tmp/checkpoint.json",
+			CompletedBatches: 3,
+			FailedBatches:    0,
+			NextRecordOffset: 300,
+		},
 		Mapping: &VectorMigrationReportMapping{
 			SchemaPlan:                    "/tmp/schema-plan.json",
 			Status:                        RecordMappingStatusPass,
@@ -51,6 +58,9 @@ func TestBuildVectorMigrationReport(t *testing.T) {
 	}
 	if report.Mapping == nil || report.Mapping.SchemaPlan != "/tmp/schema-plan.json" || report.Mapping.Status != RecordMappingStatusPass || report.Mapping.ScalarMappingCount != 1 || report.Mapping.DynamicMetadataMappingCount != 1 || report.Mapping.PartitionMetadataMappingCount != 1 || report.Mapping.BlockingIssueCount != 0 {
 		t.Fatalf("unexpected mapping summary: %+v", report.Mapping)
+	}
+	if report.Checkpoint == nil || report.Checkpoint.Path != "/tmp/checkpoint.json" || report.Checkpoint.ResumeFrom != "/tmp/checkpoint.json" || report.Checkpoint.CompletedBatches != 3 || report.Checkpoint.NextRecordOffset != 300 {
+		t.Fatalf("unexpected checkpoint summary: %+v", report.Checkpoint)
 	}
 }
 
@@ -137,6 +147,104 @@ func TestVectorMigrationRunnerCopiesFullRecordPayloads(t *testing.T) {
 	source.records[0].DynamicMetadata["brand"] = "mutated"
 	if written.Vector[0] != 0.1 || written.Scalars["title"] != "first" || written.DynamicMetadata["brand"] != "acme" {
 		t.Fatalf("expected target full-record payload to be copied independently, got %#v", written)
+	}
+}
+
+func TestVectorMigrationRunnerWritesBatchesAndCheckpoints(t *testing.T) {
+	source := &fakeVectorMigrationSource{records: []VectorMigrationRecord{
+		{ID: "vec-1", Vector: []float64{1, 1, 1}},
+		{ID: "vec-2", Vector: []float64{2, 2, 2}},
+		{ID: "vec-3", Vector: []float64{3, 3, 3}},
+		{ID: "vec-4", Vector: []float64{4, 4, 4}},
+		{ID: "vec-5", Vector: []float64{5, 5, 5}},
+	}}
+	target := &fakeVectorMigrationTarget{}
+	store := &fakeVectorMigrationCheckpointStore{}
+	runner, err := NewVectorMigrationRunnerWithCheckpointStore(VectorMigrationConfig{SourceCollection: "items", TargetTable: "items_copy", Dimension: 3, BatchSize: 2, CheckpointPath: "/tmp/checkpoint.json", JobID: "job-1"}, source, target, store)
+	if err != nil {
+		t.Fatalf("NewVectorMigrationRunnerWithCheckpointStore returned error: %v", err)
+	}
+
+	result, err := runner.Migrate(context.Background())
+	if err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	if result.RecordsRead != 5 || result.RecordsWritten != 5 {
+		t.Fatalf("unexpected result: %+v", result)
+	}
+	if len(target.writeBatches) != 3 {
+		t.Fatalf("write batch count = %d, want 3", len(target.writeBatches))
+	}
+	if len(target.writeBatches[0]) != 2 || len(target.writeBatches[1]) != 2 || len(target.writeBatches[2]) != 1 {
+		t.Fatalf("unexpected write batches: %#v", target.writeBatches)
+	}
+	if len(store.checkpoints) != 4 {
+		t.Fatalf("checkpoint count = %d, want 4", len(store.checkpoints))
+	}
+	last := store.checkpoints[len(store.checkpoints)-1]
+	if last.Status != VectorMigrationCheckpointStatusCompleted || last.Resume.NextRecordOffset != 5 || len(last.CompletedBatches) != 3 {
+		t.Fatalf("unexpected final checkpoint: %+v", last)
+	}
+}
+
+func TestVectorMigrationRunnerWritesFailedCheckpointBeforeReturningWriteError(t *testing.T) {
+	source := &fakeVectorMigrationSource{records: []VectorMigrationRecord{
+		{ID: "vec-1", Vector: []float64{1, 1, 1}},
+		{ID: "vec-2", Vector: []float64{2, 2, 2}},
+		{ID: "vec-3", Vector: []float64{3, 3, 3}},
+	}}
+	target := &fakeVectorMigrationTarget{failOnCall: 2}
+	store := &fakeVectorMigrationCheckpointStore{}
+	runner, err := NewVectorMigrationRunnerWithCheckpointStore(VectorMigrationConfig{SourceCollection: "items", TargetTable: "items_copy", Dimension: 3, BatchSize: 2, CheckpointPath: "/tmp/checkpoint.json"}, source, target, store)
+	if err != nil {
+		t.Fatalf("NewVectorMigrationRunnerWithCheckpointStore returned error: %v", err)
+	}
+
+	_, err = runner.Migrate(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "write target records") {
+		t.Fatalf("expected write target records error, got %v", err)
+	}
+	if len(store.checkpoints) != 2 {
+		t.Fatalf("checkpoint count = %d, want 2", len(store.checkpoints))
+	}
+	failed := store.checkpoints[len(store.checkpoints)-1]
+	if failed.Status != VectorMigrationCheckpointStatusFailed || len(failed.CompletedBatches) != 1 || len(failed.FailedBatches) != 1 {
+		t.Fatalf("unexpected failed checkpoint: %+v", failed)
+	}
+	if failed.Resume.NextRecordOffset != 2 || failed.FailedBatches[0].Start != 2 || failed.FailedBatches[0].End != 3 {
+		t.Fatalf("unexpected failed checkpoint offsets: %+v", failed)
+	}
+}
+
+func TestVectorMigrationRunnerResumeSkipsCompletedRecords(t *testing.T) {
+	source := &fakeVectorMigrationSource{records: []VectorMigrationRecord{
+		{ID: "vec-1", Vector: []float64{1, 1, 1}},
+		{ID: "vec-2", Vector: []float64{2, 2, 2}},
+		{ID: "vec-3", Vector: []float64{3, 3, 3}},
+		{ID: "vec-4", Vector: []float64{4, 4, 4}},
+		{ID: "vec-5", Vector: []float64{5, 5, 5}},
+	}}
+	target := &fakeVectorMigrationTarget{}
+	store := &fakeVectorMigrationCheckpointStore{}
+	checkpoint := BuildVectorMigrationCheckpoint(VectorMigrationCheckpointInput{Status: VectorMigrationCheckpointStatusFailed, SourceCollection: "items", TargetTable: "items_copy", Dimension: 3, BatchSize: 2, RecordsRead: 5, RecordsWritten: 2, CompletedBatches: []VectorMigrationCheckpointBatch{{Index: 0, Start: 0, End: 2, RecordsWritten: 2}}, Resume: VectorMigrationCheckpointResume{NextBatchIndex: 1, NextRecordOffset: 2}})
+	runner, err := NewVectorMigrationRunnerWithCheckpointStore(VectorMigrationConfig{SourceCollection: "items", TargetTable: "items_copy", Dimension: 3, BatchSize: 2, ResumeCheckpoint: &checkpoint, CheckpointPath: "/tmp/checkpoint.json"}, source, target, store)
+	if err != nil {
+		t.Fatalf("NewVectorMigrationRunnerWithCheckpointStore returned error: %v", err)
+	}
+
+	result, err := runner.Migrate(context.Background())
+	if err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	if result.RecordsRead != 5 || result.RecordsWritten != 3 {
+		t.Fatalf("unexpected result: %+v", result)
+	}
+	if len(target.records) != 3 || target.records[0].ID != "vec-3" || target.records[2].ID != "vec-5" {
+		t.Fatalf("resume wrote unexpected records: %#v", target.records)
+	}
+	last := store.checkpoints[len(store.checkpoints)-1]
+	if last.Resume.NextRecordOffset != 5 || len(last.CompletedBatches) != 3 {
+		t.Fatalf("unexpected resumed checkpoint: %+v", last)
 	}
 }
 
@@ -289,9 +397,12 @@ func (s *fakeVectorMigrationSource) ReadRecords(ctx context.Context, collection 
 }
 
 type fakeVectorMigrationTarget struct {
-	table   string
-	records []VectorMigrationRecord
-	err     error
+	table        string
+	records      []VectorMigrationRecord
+	writeBatches [][]VectorMigrationRecord
+	err          error
+	failOnCall   int
+	calls        int
 }
 
 func (t *fakeVectorMigrationTarget) WriteRecords(ctx context.Context, table string, records []VectorMigrationRecord) error {
@@ -299,9 +410,31 @@ func (t *fakeVectorMigrationTarget) WriteRecords(ctx context.Context, table stri
 		return err
 	}
 	t.table = table
+	t.calls++
 	if t.err != nil {
 		return t.err
 	}
-	t.records = copyVectorMigrationRecords(records)
+	if t.failOnCall > 0 && t.calls == t.failOnCall {
+		return errors.New("write batch exploded")
+	}
+	copied := copyVectorMigrationRecords(records)
+	t.writeBatches = append(t.writeBatches, copied)
+	t.records = append(t.records, copied...)
+	return nil
+}
+
+type fakeVectorMigrationCheckpointStore struct {
+	checkpoints []VectorMigrationCheckpoint
+	err         error
+}
+
+func (s *fakeVectorMigrationCheckpointStore) Save(ctx context.Context, checkpoint VectorMigrationCheckpoint) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if s.err != nil {
+		return s.err
+	}
+	s.checkpoints = append(s.checkpoints, checkpoint)
 	return nil
 }
