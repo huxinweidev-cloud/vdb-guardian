@@ -105,6 +105,14 @@ func main() {
 		}
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "map-migration-records" {
+		if err := runMapMigrationRecordsCommand(os.Args[2:], os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "map-migration-records failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if len(os.Args) > 1 && os.Args[1] == "compare-applied-schema" {
 		if err := runCompareAppliedSchemaCommand(os.Args[2:], os.Stdout); err != nil {
 			fmt.Fprintf(os.Stderr, "compare-applied-schema failed: %v\n", err)

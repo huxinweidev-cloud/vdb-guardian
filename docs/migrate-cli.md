@@ -40,7 +40,9 @@ records_read: 100
 records_written: 100
 ```
 
-When `--output` is provided, the command also writes a machine-readable JSON report with `0600` permissions. The report records the job id, source collection, target table, schema preflight status, dimension, records read, and records written. It never includes the PostgreSQL connection URL.
+When `--output` is provided, the command also writes a machine-readable JSON report with `0600` permissions. The report records the job id, source collection, target table, schema preflight status, optional record-mapping summary metadata, dimension, records read, and records written. It never includes the PostgreSQL connection URL.
+
+For pre-migration full-record mapping validation, run `vdbg map-migration-records` against the same schema plan before execution. That command is local-artifact only and does not connect to Milvus or PostgreSQL.
 
 ## Optional schema preflight
 

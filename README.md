@@ -50,6 +50,7 @@ Implemented in this scaffold:
 - `vdbg apply-pgvector-schema` dry-run-by-default pgvector schema DDL application CLI.
 - `vdbg inspect-pgvector-schema` read-only live PostgreSQL/pgvector schema inspection CLI.
 - `vdbg compare-applied-schema` read-only drift gate for planned vs live pgvector schema artifacts.
+- `vdbg map-migration-records` local-artifact full-record mapping validation CLI.
 - Internal minimal Milvus-to-pgvector migration runner boundary with optional schema preflight and JSON result report.
 - Tested migration source/target adapter boundary for Milvus reads and pgvector writes.
 - Real Milvus SDK migration reader and pgx-backed pgvector migration writer.
@@ -141,6 +142,7 @@ go run ./cmd/vdbg compare-schema-plans --inspection-plan /tmp/vdb-guardian-milvu
 go run ./cmd/vdbg apply-pgvector-schema --schema-plan /tmp/vdb-guardian-pgvector-schema-plan.json --artifact-dir /tmp/vdb-guardian-schema-apply --job-id schema-apply-smoke --dry-run
 go run ./cmd/vdbg inspect-pgvector-schema --pgvector-connection-url '[REDACTED]' --target-schema public --output /tmp/vdb-guardian-live-pgvector-schema.json
 go run ./cmd/vdbg compare-applied-schema --schema-plan /tmp/vdb-guardian-pgvector-schema-plan.json --live-schema /tmp/vdb-guardian-live-pgvector-schema.json --output /tmp/vdb-guardian-applied-schema-compare-report.json
+go run ./cmd/vdbg map-migration-records --schema-plan /tmp/vdb-guardian-pgvector-schema-plan.json --output /tmp/vdb-guardian-record-mapping.json
 go run ./cmd/vdbg seed-pgvector --fixture testdata/migration/synthetic-small.json --connection-url '[REDACTED]' --reset
 go run ./cmd/vdbg search-pgvector --fixture testdata/migration/synthetic-small.json --connection-url '[REDACTED]' --top-k 3 --expand-k 5
 go run ./cmd/vdbg build-pgvector-artifact --fixture testdata/migration/synthetic-small.json --connection-url '[REDACTED]' --output /tmp/vdb-guardian-target-fingerprint.json --top-k 3 --expand-k 5 --stable-k 2 --boundary-k 1

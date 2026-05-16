@@ -79,6 +79,7 @@ Python 检索行为指纹算法引擎
 - `vdbg apply-pgvector-schema` 默认 dry-run 的 pgvector schema DDL 应用 CLI；
 - `vdbg inspect-pgvector-schema` 只读 live PostgreSQL/pgvector schema inspection CLI；
 - `vdbg compare-applied-schema` 对 planned/live pgvector schema artifact 执行只读 drift gate；
+- `vdbg map-migration-records` 本地 artifact full-record mapping 验证 CLI；
 - 最小化 Milvus→pgvector 迁移运行器边界，支持可选 schema preflight 和 JSON result report；
 - 已测试的 Milvus 读 / pgvector 写迁移适配器边界；
 - 真实 Milvus SDK 迁移读取器与 pgx 驱动的 pgvector 迁移写入器；
@@ -286,7 +287,19 @@ go run ./cmd/vdbg compare-applied-schema \
 
 详见 `docs/zh-CN/compare-applied-schema-cli.md`。
 
-### 16. pgvector Connector
+### 16. migration record mapping CLI
+
+`vdbg map-migration-records` 会读取 `plan-pgvector-schema` 生成的 schema plan，并生成本地 full-record mapping report。它不连接 Milvus/PostgreSQL、不读取行数据、不执行 DDL/DML；如果 mapping 存在 blocking issue，会先写出 JSON report，再返回非零。
+
+```bash
+go run ./cmd/vdbg map-migration-records \
+  --schema-plan /tmp/vdb-guardian-pgvector-schema-plan.json \
+  --output /tmp/vdb-guardian-record-mapping.json
+```
+
+详见 `docs/zh-CN/map-migration-records-cli.md`。
+
+### 17. pgvector Connector
 
 最小 pgvector connector 位于：
 

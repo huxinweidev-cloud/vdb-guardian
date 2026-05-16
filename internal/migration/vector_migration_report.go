@@ -11,6 +11,7 @@ type VectorMigrationReportOptions struct {
 	JobID             string
 	SchemaPreflight   bool
 	SchemaComparePath string
+	Mapping           *VectorMigrationReportMapping
 }
 
 type VectorMigrationReport struct {
@@ -20,6 +21,7 @@ type VectorMigrationReport struct {
 	Source        VectorMigrationReportEndpoint  `json:"source"`
 	Target        VectorMigrationReportEndpoint  `json:"target"`
 	Preflight     VectorMigrationReportPreflight `json:"preflight"`
+	Mapping       *VectorMigrationReportMapping  `json:"mapping,omitempty"`
 	Summary       VectorMigrationReportSummary   `json:"summary"`
 }
 
@@ -39,6 +41,15 @@ type VectorMigrationReportSummary struct {
 	Dimension      int `json:"dimension"`
 	RecordsRead    int `json:"records_read"`
 	RecordsWritten int `json:"records_written"`
+}
+
+type VectorMigrationReportMapping struct {
+	SchemaPlan                    string `json:"schema_plan,omitempty"`
+	Status                        string `json:"status"`
+	ScalarMappingCount            int    `json:"scalar_mapping_count"`
+	DynamicMetadataMappingCount   int    `json:"dynamic_metadata_mapping_count"`
+	PartitionMetadataMappingCount int    `json:"partition_metadata_mapping_count"`
+	BlockingIssueCount            int    `json:"blocking_issue_count"`
 }
 
 func BuildVectorMigrationReport(result VectorMigrationResult, options VectorMigrationReportOptions) VectorMigrationReport {
@@ -63,6 +74,7 @@ func BuildVectorMigrationReport(result VectorMigrationResult, options VectorMigr
 			SchemaComparePath:   options.SchemaComparePath,
 			SchemaCompareStatus: preflightStatus,
 		},
+		Mapping: options.Mapping,
 		Summary: VectorMigrationReportSummary{
 			Dimension:      result.Dimension,
 			RecordsRead:    result.RecordsRead,

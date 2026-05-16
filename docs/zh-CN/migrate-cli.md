@@ -40,7 +40,9 @@ records_read: 100
 records_written: 100
 ```
 
-当提供 `--output` 时，命令还会写出机器可读 JSON report，文件权限为 `0600`。该 report 会记录 job id、源集合、目标表、schema preflight 状态、向量维度、读取记录数和写入记录数，但不会包含 PostgreSQL 连接 URL。
+当提供 `--output` 时，命令还会写出机器可读 JSON report，文件权限为 `0600`。该 report 会记录 job id、源集合、目标表、schema preflight 状态、可选 record-mapping summary metadata、向量维度、读取记录数和写入记录数，但不会包含 PostgreSQL 连接 URL。
+
+迁移前如需验证 full-record mapping，请先对同一 schema plan 运行 `vdbg map-migration-records`。该命令只读取本地 artifact，不连接 Milvus 或 PostgreSQL。
 
 ## 可选 schema preflight
 

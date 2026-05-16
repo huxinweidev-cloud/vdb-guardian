@@ -21,6 +21,14 @@ func TestBuildVectorMigrationReport(t *testing.T) {
 		JobID:             "migration-smoke",
 		SchemaPreflight:   true,
 		SchemaComparePath: "/tmp/schema-compare.json",
+		Mapping: &VectorMigrationReportMapping{
+			SchemaPlan:                    "/tmp/schema-plan.json",
+			Status:                        RecordMappingStatusPass,
+			ScalarMappingCount:            1,
+			DynamicMetadataMappingCount:   1,
+			PartitionMetadataMappingCount: 1,
+			BlockingIssueCount:            0,
+		},
 	})
 
 	if report.SchemaVersion != VectorMigrationReportVersion {
@@ -40,6 +48,9 @@ func TestBuildVectorMigrationReport(t *testing.T) {
 	}
 	if !report.Preflight.SchemaMatchRequired || report.Preflight.SchemaCompareStatus != "pass" {
 		t.Fatalf("unexpected preflight: %+v", report.Preflight)
+	}
+	if report.Mapping == nil || report.Mapping.SchemaPlan != "/tmp/schema-plan.json" || report.Mapping.Status != RecordMappingStatusPass || report.Mapping.ScalarMappingCount != 1 || report.Mapping.DynamicMetadataMappingCount != 1 || report.Mapping.PartitionMetadataMappingCount != 1 || report.Mapping.BlockingIssueCount != 0 {
+		t.Fatalf("unexpected mapping summary: %+v", report.Mapping)
 	}
 }
 
