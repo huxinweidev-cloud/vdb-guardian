@@ -78,6 +78,30 @@ func TestMilvusVectorMigrationSourceReadRecordsUsesAdapter(t *testing.T) {
 	}
 }
 
+func TestMilvusVectorMigrationSourceUsesRecordMappingFields(t *testing.T) {
+	adapter := &fakeMilvusMigrationRecordReader{}
+	mapping := fullRecordAdapterMappingFixture()
+	source, err := NewMilvusVectorMigrationSource(connectors.MilvusConfig{Address: "localhost:19530"}, adapter)
+	if err != nil {
+		t.Fatalf("NewMilvusVectorMigrationSource returned error: %v", err)
+	}
+	source = source.WithRecordMapping(mapping)
+
+	_, err = source.ReadRecords(context.Background(), "")
+	if err != nil {
+		t.Fatalf("ReadRecords returned error: %v", err)
+	}
+	if adapter.request.Collection != "products" || adapter.request.IDField != "sku" || adapter.request.VectorField != "embedding" {
+		t.Fatalf("unexpected mapped read request: %#v", adapter.request)
+	}
+	if !equalStringSlices(adapter.request.ScalarFields, []string{"title", "price"}) {
+		t.Fatalf("scalar fields = %#v", adapter.request.ScalarFields)
+	}
+	if adapter.request.DynamicField != "_milvus_dynamic" || adapter.request.PartitionField != "_milvus_partition" {
+		t.Fatalf("unexpected metadata fields: %#v", adapter.request)
+	}
+}
+
 func TestMilvusVectorMigrationSourcePropagatesAdapterErrors(t *testing.T) {
 	adapter := &fakeMilvusMigrationRecordReader{err: errors.New("boom")}
 	source, err := NewMilvusVectorMigrationSource(connectors.MilvusConfig{Address: "localhost:19530", DefaultCollection: "items", IDField: "id", VectorField: "embedding"}, adapter)
@@ -109,6 +133,33 @@ func TestPGVectorMigrationTargetWriteRecordsUsesAdapter(t *testing.T) {
 	records[0].Vector[0] = 99
 	if adapter.writes[0].Vector[0] == 99 {
 		t.Fatal("expected target to defensively copy records before writing")
+	}
+}
+
+func TestPGVectorMigrationTargetUsesRecordMappingColumns(t *testing.T) {
+	adapter := &fakePGVectorMigrationRecordWriter{}
+	mapping := fullRecordAdapterMappingFixture()
+	target, err := NewPGVectorMigrationTarget(connectors.PGVectorConfig{ConnectionURL: "postgres://example"}, adapter)
+	if err != nil {
+		t.Fatalf("NewPGVectorMigrationTarget returned error: %v", err)
+	}
+	target = target.WithRecordMapping(mapping)
+	records := []VectorMigrationRecord{{ID: "sku-1", Vector: []float64{1, 2, 3}, Scalars: map[string]any{"title": "First", "price": 9.5}, DynamicMetadata: map[string]any{"brand": "acme"}, Partition: "tenant_a"}}
+
+	if err := target.WriteRecords(context.Background(), "", records); err != nil {
+		t.Fatalf("WriteRecords returned error: %v", err)
+	}
+	if adapter.writeRequest.Table != "products" || adapter.writeRequest.IDColumn != "sku" || adapter.writeRequest.VectorColumn != "embedding" {
+		t.Fatalf("unexpected mapped write request: %#v", adapter.writeRequest)
+	}
+	if !equalStringSlices(adapter.writeRequest.ScalarColumns, []string{"title", "price"}) {
+		t.Fatalf("scalar columns = %#v", adapter.writeRequest.ScalarColumns)
+	}
+	if adapter.writeRequest.DynamicColumn != "milvus_dynamic" || adapter.writeRequest.PartitionColumn != "milvus_partition" {
+		t.Fatalf("unexpected metadata columns: %#v", adapter.writeRequest)
+	}
+	if len(adapter.writes) != 1 || adapter.writes[0].Scalars["title"] != "First" || adapter.writes[0].Partition != "tenant_a" {
+		t.Fatalf("unexpected writes: %#v", adapter.writes)
 	}
 }
 
@@ -154,14 +205,20 @@ type fakeMilvusMigrationRecordReader struct {
 	collection  string
 	idField     string
 	vectorField string
+	request     MilvusMigrationReadRequest
 	records     []VectorMigrationRecord
 	err         error
 }
 
 func (f *fakeMilvusMigrationRecordReader) ReadMilvusMigrationRecords(ctx context.Context, collection, idField, vectorField string) ([]VectorMigrationRecord, error) {
-	f.collection = collection
-	f.idField = idField
-	f.vectorField = vectorField
+	return f.ReadMilvusMigrationRecordsWithMapping(ctx, MilvusMigrationReadRequest{Collection: collection, IDField: idField, VectorField: vectorField})
+}
+
+func (f *fakeMilvusMigrationRecordReader) ReadMilvusMigrationRecordsWithMapping(ctx context.Context, request MilvusMigrationReadRequest) ([]VectorMigrationRecord, error) {
+	f.collection = request.Collection
+	f.idField = request.IDField
+	f.vectorField = request.VectorField
+	f.request = request
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -173,19 +230,25 @@ type fakePGVectorMigrationRecordWriter struct {
 	resetTable   string
 	idColumn     string
 	vectorColumn string
+	writeRequest PGVectorMigrationWriteRequest
 	writes       []VectorMigrationRecord
 	err          error
 	resetErr     error
 }
 
 func (f *fakePGVectorMigrationRecordWriter) WritePGVectorMigrationRecords(ctx context.Context, table, idColumn, vectorColumn string, records []VectorMigrationRecord) error {
-	f.table = table
-	f.idColumn = idColumn
-	f.vectorColumn = vectorColumn
+	return f.WritePGVectorMigrationRecordsWithMapping(ctx, PGVectorMigrationWriteRequest{Table: table, IDColumn: idColumn, VectorColumn: vectorColumn, Records: records})
+}
+
+func (f *fakePGVectorMigrationRecordWriter) WritePGVectorMigrationRecordsWithMapping(ctx context.Context, request PGVectorMigrationWriteRequest) error {
+	f.table = request.Table
+	f.idColumn = request.IDColumn
+	f.vectorColumn = request.VectorColumn
+	f.writeRequest = request
 	if f.err != nil {
 		return f.err
 	}
-	f.writes = copyVectorMigrationRecords(records)
+	f.writes = copyVectorMigrationRecords(request.Records)
 	return nil
 }
 
@@ -195,4 +258,32 @@ func (f *fakePGVectorMigrationRecordWriter) ResetPGVectorMigrationRecords(ctx co
 	}
 	f.resetTable = table
 	return nil
+}
+
+func fullRecordAdapterMappingFixture() CollectionRecordMapping {
+	return CollectionRecordMapping{
+		SourceCollection: "products",
+		TargetSchema:     "public",
+		TargetTable:      "products",
+		PrimaryKey:       &RecordFieldMapping{Kind: RecordMappingKindPrimaryKey, SourceField: "sku", TargetColumn: "sku", TargetType: "varchar(64)", SupportLevel: "supported"},
+		Vector:           &RecordFieldMapping{Kind: RecordMappingKindVector, SourceField: "embedding", TargetColumn: "embedding", TargetType: "vector(3)", SupportLevel: "supported"},
+		Scalars: []RecordFieldMapping{
+			{Kind: RecordMappingKindScalar, SourceField: "title", TargetColumn: "title", TargetType: "text", SupportLevel: "supported"},
+			{Kind: RecordMappingKindScalar, SourceField: "price", TargetColumn: "price", TargetType: "double precision", SupportLevel: "supported"},
+		},
+		DynamicMetadata:   &RecordFieldMapping{Kind: RecordMappingKindDynamicMetadata, SourceField: "_milvus_dynamic", TargetColumn: "milvus_dynamic", TargetType: "jsonb", SupportLevel: "degraded"},
+		PartitionMetadata: &RecordFieldMapping{Kind: RecordMappingKindPartitionMetadata, SourceField: "_milvus_partition", TargetColumn: "milvus_partition", TargetType: "text", SupportLevel: "degraded"},
+	}
+}
+
+func equalStringSlices(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
