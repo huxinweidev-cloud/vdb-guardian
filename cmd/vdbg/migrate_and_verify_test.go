@@ -20,7 +20,7 @@ func TestParseMigrateAndVerifyOptions(t *testing.T) {
 		"--source-collection", "source_items",
 		"--milvus-id-field", "vector_id",
 		"--milvus-vector-field", "embedding",
-		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--pgvector-connection-url", "local-placeholder",
 		"--target-table", "target_items",
 		"--pgvector-id-column", "vector_id",
 		"--pgvector-vector-column", "embedding",
@@ -46,7 +46,7 @@ func TestParseMigrateAndVerifyOptions(t *testing.T) {
 	if options.Migrate.MigrationConfig.SourceCollection != "source_items" || options.Migrate.MigrationConfig.TargetTable != "target_items" {
 		t.Fatalf("unexpected migration config: %+v", options.Migrate.MigrationConfig)
 	}
-	if options.Migrate.PGVectorConfig.ConnectionURL != "postgres://[REDACTED]" {
+	if options.Migrate.PGVectorConfig.ConnectionURL != "local-placeholder" {
 		t.Fatalf("unexpected connection URL: %s", options.Migrate.PGVectorConfig.ConnectionURL)
 	}
 	if options.ArtifactDir != "/tmp/vdb-guardian-run" || options.JobID != "mv-smoke" {
@@ -64,7 +64,7 @@ func TestParseMigrateAndVerifyOptionsParsesResetTarget(t *testing.T) {
 	options, err := parseMigrateAndVerifyOptions([]string{
 		"--fixture", "fixture.json",
 		"--milvus-address", "localhost:19530",
-		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--pgvector-connection-url", "local-placeholder",
 		"--artifact-dir", "/tmp/vdb-guardian-run",
 		"--dimension", "8",
 		"--reset-target",
@@ -81,7 +81,7 @@ func TestParseMigrateAndVerifyOptionsParsesRecordMapping(t *testing.T) {
 	options, err := parseMigrateAndVerifyOptions([]string{
 		"--fixture", "fixture.json",
 		"--milvus-address", "localhost:19530",
-		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--pgvector-connection-url", "local-placeholder",
 		"--artifact-dir", t.TempDir(),
 		"--dimension", "8",
 		"--record-mapping", "/tmp/record-mapping.json",
@@ -94,11 +94,43 @@ func TestParseMigrateAndVerifyOptionsParsesRecordMapping(t *testing.T) {
 	}
 }
 
+func TestParseMigrateAndVerifyOptionsParsesFullRecordCompare(t *testing.T) {
+	options, err := parseMigrateAndVerifyOptions([]string{
+		"--fixture", "fixture.json",
+		"--milvus-address", "localhost:19530",
+		"--pgvector-connection-url", "local-placeholder",
+		"--artifact-dir", t.TempDir(),
+		"--dimension", "8",
+		"--record-mapping", "/tmp/record-mapping.json",
+		"--full-record-compare",
+	})
+	if err != nil {
+		t.Fatalf("parseMigrateAndVerifyOptions returned error: %v", err)
+	}
+	if !options.FullRecordCompare {
+		t.Fatal("expected full-record-compare flag to be enabled")
+	}
+}
+
+func TestParseMigrateAndVerifyOptionsRequiresRecordMappingForFullRecordCompare(t *testing.T) {
+	_, err := parseMigrateAndVerifyOptions([]string{
+		"--fixture", "fixture.json",
+		"--milvus-address", "localhost:19530",
+		"--pgvector-connection-url", "local-placeholder",
+		"--artifact-dir", t.TempDir(),
+		"--dimension", "8",
+		"--full-record-compare",
+	})
+	if err == nil || !strings.Contains(err.Error(), "record-mapping") {
+		t.Fatalf("expected record-mapping error, got %v", err)
+	}
+}
+
 func TestParseMigrateAndVerifyOptionsParsesStrictCount(t *testing.T) {
 	options, err := parseMigrateAndVerifyOptions([]string{
 		"--fixture", "fixture.json",
 		"--milvus-address", "localhost:19530",
-		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--pgvector-connection-url", "local-placeholder",
 		"--artifact-dir", "/tmp/vdb-guardian-run",
 		"--dimension", "8",
 		"--strict-count",
@@ -115,7 +147,7 @@ func TestParseMigrateAndVerifyOptionsParsesThresholds(t *testing.T) {
 	options, err := parseMigrateAndVerifyOptions([]string{
 		"--fixture", "fixture.json",
 		"--milvus-address", "localhost:19530",
-		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--pgvector-connection-url", "local-placeholder",
 		"--artifact-dir", "/tmp/vdb-guardian-run",
 		"--dimension", "8",
 		"--min-consistency-score", "0.999",
@@ -135,12 +167,12 @@ func TestParseMigrateAndVerifyOptionsRejectsMissingRequiredFlags(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "missing fixture", args: []string{"--milvus-address", "localhost:19530", "--pgvector-connection-url", "postgres://[REDACTED]", "--artifact-dir", "/tmp/out", "--dimension", "8"}, want: "fixture"},
-		{name: "missing milvus address", args: []string{"--fixture", "fixture.json", "--pgvector-connection-url", "postgres://[REDACTED]", "--artifact-dir", "/tmp/out", "--dimension", "8"}, want: "milvus-address"},
+		{name: "missing fixture", args: []string{"--milvus-address", "localhost:19530", "--pgvector-connection-url", "local-placeholder", "--artifact-dir", "/tmp/out", "--dimension", "8"}, want: "fixture"},
+		{name: "missing milvus address", args: []string{"--fixture", "fixture.json", "--pgvector-connection-url", "local-placeholder", "--artifact-dir", "/tmp/out", "--dimension", "8"}, want: "milvus-address"},
 		{name: "missing connection url", args: []string{"--fixture", "fixture.json", "--milvus-address", "localhost:19530", "--artifact-dir", "/tmp/out", "--dimension", "8"}, want: "pgvector-connection-url"},
-		{name: "missing artifact dir", args: []string{"--fixture", "fixture.json", "--milvus-address", "localhost:19530", "--pgvector-connection-url", "postgres://[REDACTED]", "--dimension", "8"}, want: "artifact-dir"},
-		{name: "bad dimension", args: []string{"--fixture", "fixture.json", "--milvus-address", "localhost:19530", "--pgvector-connection-url", "postgres://[REDACTED]", "--artifact-dir", "/tmp/out", "--dimension", "0"}, want: "dimension"},
-		{name: "bad expand", args: []string{"--fixture", "fixture.json", "--milvus-address", "localhost:19530", "--pgvector-connection-url", "postgres://[REDACTED]", "--artifact-dir", "/tmp/out", "--dimension", "8", "--top-k", "3", "--expand-k", "3", "--boundary-k", "1"}, want: "expand-k"},
+		{name: "missing artifact dir", args: []string{"--fixture", "fixture.json", "--milvus-address", "localhost:19530", "--pgvector-connection-url", "local-placeholder", "--dimension", "8"}, want: "artifact-dir"},
+		{name: "bad dimension", args: []string{"--fixture", "fixture.json", "--milvus-address", "localhost:19530", "--pgvector-connection-url", "local-placeholder", "--artifact-dir", "/tmp/out", "--dimension", "0"}, want: "dimension"},
+		{name: "bad expand", args: []string{"--fixture", "fixture.json", "--milvus-address", "localhost:19530", "--pgvector-connection-url", "local-placeholder", "--artifact-dir", "/tmp/out", "--dimension", "8", "--top-k", "3", "--expand-k", "3", "--boundary-k", "1"}, want: "expand-k"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -159,7 +191,7 @@ func TestParseMigrateAndVerifyOptionsRejectsInvalidThresholds(t *testing.T) {
 	baseArgs := []string{
 		"--fixture", "fixture.json",
 		"--milvus-address", "localhost:19530",
-		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--pgvector-connection-url", "local-placeholder",
 		"--artifact-dir", "/tmp/vdb-guardian-run",
 		"--dimension", "8",
 	}
@@ -192,7 +224,7 @@ func TestRunMigrateAndVerifyWithInjectedSteps(t *testing.T) {
 		"--fixture", "fixture.json",
 		"--milvus-address", "localhost:19530",
 		"--source-collection", "items",
-		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--pgvector-connection-url", "local-placeholder",
 		"--target-table", "items",
 		"--artifact-dir", artifactDir,
 		"--job-id", "mv-smoke",
@@ -212,6 +244,9 @@ func TestRunMigrateAndVerifyWithInjectedSteps(t *testing.T) {
 	}
 	if result.TargetFingerprintPath != filepath.Join(artifactDir, "mv-smoke-target-fingerprint.json") {
 		t.Fatalf("unexpected target fingerprint path: %s", result.TargetFingerprintPath)
+	}
+	if result.SourceFullRecordPath != "" || result.TargetFullRecordPath != "" || result.FullRecordComparePath != "" {
+		t.Fatalf("expected full-record artifact paths to be empty by default: %+v", result)
 	}
 	if result.MarkdownReportPath != filepath.Join(artifactDir, "mv-smoke-report.md") {
 		t.Fatalf("unexpected markdown report path: %s", result.MarkdownReportPath)
@@ -238,12 +273,72 @@ func TestRunMigrateAndVerifyWithInjectedSteps(t *testing.T) {
 	}
 }
 
+func TestRunMigrateAndVerifyRunsFullRecordCompareWhenEnabled(t *testing.T) {
+	artifactDir := t.TempDir()
+	fake := &fakeMigrateAndVerifySteps{}
+	result, err := runMigrateAndVerifyWithSteps(context.Background(), []string{
+		"--fixture", "fixture.json",
+		"--milvus-address", "localhost:19530",
+		"--pgvector-connection-url", "local-placeholder",
+		"--artifact-dir", artifactDir,
+		"--job-id", "mv-smoke",
+		"--dimension", "8",
+		"--record-mapping", "/tmp/record-mapping.json",
+		"--full-record-compare",
+	}, fake)
+	if err != nil {
+		t.Fatalf("runMigrateAndVerifyWithSteps returned error: %v", err)
+	}
+	want := []string{"migrate", "build-source", "build-target", "compare", "build-full-source", "build-full-target", "compare-full-records"}
+	if strings.Join(fake.calls, ",") != strings.Join(want, ",") {
+		t.Fatalf("unexpected call order: got %v want %v", fake.calls, want)
+	}
+	if result.SourceFullRecordPath != filepath.Join(artifactDir, "mv-smoke-source-full-records.json") {
+		t.Fatalf("unexpected source full-record path: %s", result.SourceFullRecordPath)
+	}
+	if result.TargetFullRecordPath != filepath.Join(artifactDir, "mv-smoke-target-full-records.json") {
+		t.Fatalf("unexpected target full-record path: %s", result.TargetFullRecordPath)
+	}
+	if result.FullRecordComparePath != filepath.Join(artifactDir, "mv-smoke-full-record-compare.json") {
+		t.Fatalf("unexpected full-record compare path: %s", result.FullRecordComparePath)
+	}
+}
+
+func TestRunMigrateAndVerifyPreservesReportsWhenFullRecordCompareFails(t *testing.T) {
+	artifactDir := t.TempDir()
+	fake := &fakeMigrateAndVerifySteps{fullCompareErr: errors.New("full-record mismatch")}
+	result, err := runMigrateAndVerifyWithSteps(context.Background(), []string{
+		"--fixture", "fixture.json",
+		"--milvus-address", "localhost:19530",
+		"--pgvector-connection-url", "local-placeholder",
+		"--artifact-dir", artifactDir,
+		"--dimension", "8",
+		"--record-mapping", "mapping.json",
+		"--full-record-compare",
+	}, fake)
+	if err == nil || !strings.Contains(err.Error(), "full-record mismatch") {
+		t.Fatalf("expected full-record compare error, got %v", err)
+	}
+	if !fake.fullSourceBuilt || !fake.fullTargetBuilt || !fake.fullCompared {
+		t.Fatalf("expected full-record artifact and compare steps, got %+v", fake)
+	}
+	if result.MarkdownReportPath == "" || result.DiagnosticJSONReportPath == "" || result.FullRecordComparePath == "" {
+		t.Fatalf("expected diagnostic paths to be preserved: %+v", result)
+	}
+	if _, statErr := os.Stat(result.MarkdownReportPath); statErr != nil {
+		t.Fatalf("expected markdown report before full-record failure: %v", statErr)
+	}
+	if _, statErr := os.Stat(result.DiagnosticJSONReportPath); statErr != nil {
+		t.Fatalf("expected diagnostic JSON before full-record failure: %v", statErr)
+	}
+}
+
 func TestRunMigrateAndVerifyResetsTargetBeforeMigration(t *testing.T) {
 	fake := &fakeMigrateAndVerifySteps{}
 	_, err := runMigrateAndVerifyWithSteps(context.Background(), []string{
 		"--fixture", "fixture.json",
 		"--milvus-address", "localhost:19530",
-		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--pgvector-connection-url", "local-placeholder",
 		"--artifact-dir", "/tmp/vdb-guardian-run",
 		"--dimension", "8",
 		"--reset-target",
@@ -262,7 +357,7 @@ func TestRunMigrateAndVerifyDoesNotResetTargetByDefault(t *testing.T) {
 	_, err := runMigrateAndVerifyWithSteps(context.Background(), []string{
 		"--fixture", "fixture.json",
 		"--milvus-address", "localhost:19530",
-		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--pgvector-connection-url", "local-placeholder",
 		"--artifact-dir", "/tmp/vdb-guardian-run",
 		"--dimension", "8",
 	}, fake)
@@ -279,7 +374,7 @@ func TestRunMigrateAndVerifyValidatesTargetCountWhenStrictCountEnabled(t *testin
 	_, err := runMigrateAndVerifyWithSteps(context.Background(), []string{
 		"--fixture", "fixture.json",
 		"--milvus-address", "localhost:19530",
-		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--pgvector-connection-url", "local-placeholder",
 		"--artifact-dir", t.TempDir(),
 		"--dimension", "8",
 		"--strict-count",
@@ -298,7 +393,7 @@ func TestRunMigrateAndVerifyFailsWhenStrictCountMismatches(t *testing.T) {
 	_, err := runMigrateAndVerifyWithSteps(context.Background(), []string{
 		"--fixture", "fixture.json",
 		"--milvus-address", "localhost:19530",
-		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--pgvector-connection-url", "local-placeholder",
 		"--artifact-dir", t.TempDir(),
 		"--dimension", "8",
 		"--strict-count",
@@ -317,7 +412,7 @@ func TestRunMigrateAndVerifyFailsWhenConsistencyScoreBelowThreshold(t *testing.T
 	_, err := runMigrateAndVerifyWithSteps(context.Background(), []string{
 		"--fixture", "fixture.json",
 		"--milvus-address", "localhost:19530",
-		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--pgvector-connection-url", "local-placeholder",
 		"--artifact-dir", artifactDir,
 		"--dimension", "8",
 		"--min-consistency-score", "0.99",
@@ -335,7 +430,7 @@ func TestRunMigrateAndVerifyFailsWhenFingerprintDistanceAboveThreshold(t *testin
 	_, err := runMigrateAndVerifyWithSteps(context.Background(), []string{
 		"--fixture", "fixture.json",
 		"--milvus-address", "localhost:19530",
-		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--pgvector-connection-url", "local-placeholder",
 		"--artifact-dir", t.TempDir(),
 		"--dimension", "8",
 		"--max-fingerprint-distance", "0.01",
@@ -350,7 +445,7 @@ func TestRunMigrateAndVerifyStopsWhenResetTargetFails(t *testing.T) {
 	_, err := runMigrateAndVerifyWithSteps(context.Background(), []string{
 		"--fixture", "fixture.json",
 		"--milvus-address", "localhost:19530",
-		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--pgvector-connection-url", "local-placeholder",
 		"--artifact-dir", "/tmp/vdb-guardian-run",
 		"--dimension", "8",
 		"--reset-target",
@@ -368,7 +463,7 @@ func TestRunMigrateAndVerifyStopsOnStepError(t *testing.T) {
 	_, err := runMigrateAndVerifyWithSteps(context.Background(), []string{
 		"--fixture", "fixture.json",
 		"--milvus-address", "localhost:19530",
-		"--pgvector-connection-url", "postgres://[REDACTED]",
+		"--pgvector-connection-url", "local-placeholder",
 		"--artifact-dir", "/tmp/vdb-guardian-run",
 		"--dimension", "8",
 	}, fake)
@@ -387,11 +482,15 @@ type fakeMigrateAndVerifySteps struct {
 	sourceBuilt         bool
 	targetBuilt         bool
 	compared            bool
+	fullSourceBuilt     bool
+	fullTargetBuilt     bool
+	fullCompared        bool
 	targetCount         int64
 	resetErr            error
 	migrateErr          error
 	consistencyScore    float64
 	fingerprintDistance float64
+	fullCompareErr      error
 }
 
 func (f *fakeMigrateAndVerifySteps) ResetTarget(ctx context.Context, options migrateAndVerifyOptions) error {
@@ -472,4 +571,31 @@ func (f *fakeMigrateAndVerifySteps) Compare(ctx context.Context, options compare
 			},
 		},
 	}, nil
+}
+
+func (f *fakeMigrateAndVerifySteps) BuildSourceFullRecordArtifact(ctx context.Context, options migrateAndVerifyOptions, outputPath string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	f.calls = append(f.calls, "build-full-source")
+	f.fullSourceBuilt = strings.HasSuffix(outputPath, "-source-full-records.json")
+	return nil
+}
+
+func (f *fakeMigrateAndVerifySteps) BuildTargetFullRecordArtifact(ctx context.Context, options migrateAndVerifyOptions, outputPath string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	f.calls = append(f.calls, "build-full-target")
+	f.fullTargetBuilt = strings.HasSuffix(outputPath, "-target-full-records.json")
+	return nil
+}
+
+func (f *fakeMigrateAndVerifySteps) CompareFullRecords(ctx context.Context, sourcePath, targetPath, outputPath string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	f.calls = append(f.calls, "compare-full-records")
+	f.fullCompared = strings.HasSuffix(sourcePath, "-source-full-records.json") && strings.HasSuffix(targetPath, "-target-full-records.json") && strings.HasSuffix(outputPath, "-full-record-compare.json")
+	return f.fullCompareErr
 }

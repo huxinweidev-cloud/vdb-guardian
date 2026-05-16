@@ -35,6 +35,14 @@ type MigrateAndVerifyReport struct {
 	ResetTarget bool
 	// StrictCount reports whether target row count validation was enabled after migration.
 	StrictCount bool
+	// FullRecordCompareEnabled reports whether full-record equality was enabled for this run.
+	FullRecordCompareEnabled bool
+	// SourceFullRecordPath points to the source full-record artifact JSON when enabled.
+	SourceFullRecordPath string
+	// TargetFullRecordPath points to the target full-record artifact JSON when enabled.
+	TargetFullRecordPath string
+	// FullRecordComparePath points to the full-record equality report JSON when enabled.
+	FullRecordComparePath string
 }
 
 // RenderMigrateAndVerifyMarkdown renders a deterministic Markdown report for a
@@ -49,6 +57,9 @@ func RenderMigrateAndVerifyMarkdown(report MigrateAndVerifyReport) (string, erro
 	}
 	if report.SourceFingerprintPath == "" || report.TargetFingerprintPath == "" || report.ResultPath == "" {
 		return "", errors.New("migrate-and-verify report artifact paths must not be empty")
+	}
+	if report.FullRecordCompareEnabled && (report.SourceFullRecordPath == "" || report.TargetFullRecordPath == "" || report.FullRecordComparePath == "") {
+		return "", errors.New("migrate-and-verify full-record artifact paths must not be empty when full-record compare is enabled")
 	}
 
 	resetTarget := "no"
@@ -89,6 +100,13 @@ func RenderMigrateAndVerifyMarkdown(report MigrateAndVerifyReport) (string, erro
 	fmt.Fprintf(&builder, "- Source fingerprint: `%s`\n", report.SourceFingerprintPath)
 	fmt.Fprintf(&builder, "- Target fingerprint: `%s`\n", report.TargetFingerprintPath)
 	fmt.Fprintf(&builder, "- Result JSON: `%s`\n\n", report.ResultPath)
+
+	if report.FullRecordCompareEnabled {
+		builder.WriteString("## Full-record equality\n\n")
+		fmt.Fprintf(&builder, "- Source full-record artifact: `%s`\n", report.SourceFullRecordPath)
+		fmt.Fprintf(&builder, "- Target full-record artifact: `%s`\n", report.TargetFullRecordPath)
+		fmt.Fprintf(&builder, "- Full-record compare report: `%s`\n\n", report.FullRecordComparePath)
+	}
 
 	builder.WriteString("## Safety notes\n\n")
 	if report.ResetTarget {

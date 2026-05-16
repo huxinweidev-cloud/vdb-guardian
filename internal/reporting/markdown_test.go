@@ -11,13 +11,17 @@ import (
 
 func TestRenderMigrateAndVerifyMarkdownIncludesSummaryMetricsAndArtifacts(t *testing.T) {
 	report, err := RenderMigrateAndVerifyMarkdown(MigrateAndVerifyReport{
-		JobID:                 "mv-smoke",
-		State:                 jobs.StateSucceeded,
-		SourceFingerprintPath: "/tmp/run/mv-smoke-source-fingerprint.json",
-		TargetFingerprintPath: "/tmp/run/mv-smoke-target-fingerprint.json",
-		ResultPath:            "/tmp/run/mv-smoke-result.json",
-		ResetTarget:           true,
-		StrictCount:           true,
+		JobID:                    "mv-smoke",
+		State:                    jobs.StateSucceeded,
+		SourceFingerprintPath:    "/tmp/run/mv-smoke-source-fingerprint.json",
+		TargetFingerprintPath:    "/tmp/run/mv-smoke-target-fingerprint.json",
+		ResultPath:               "/tmp/run/mv-smoke-result.json",
+		ResetTarget:              true,
+		StrictCount:              true,
+		FullRecordCompareEnabled: true,
+		SourceFullRecordPath:     "/tmp/run/mv-smoke-source-full-records.json",
+		TargetFullRecordPath:     "/tmp/run/mv-smoke-target-full-records.json",
+		FullRecordComparePath:    "/tmp/run/mv-smoke-full-record-compare.json",
 		Migration: migration.VectorMigrationResult{
 			SourceCollection: "items",
 			TargetTable:      "items",
@@ -63,6 +67,10 @@ func TestRenderMigrateAndVerifyMarkdownIncludesSummaryMetricsAndArtifacts(t *tes
 		"- Source fingerprint: `/tmp/run/mv-smoke-source-fingerprint.json`",
 		"- Target fingerprint: `/tmp/run/mv-smoke-target-fingerprint.json`",
 		"- Result JSON: `/tmp/run/mv-smoke-result.json`",
+		"## Full-record equality",
+		"- Source full-record artifact: `/tmp/run/mv-smoke-source-full-records.json`",
+		"- Target full-record artifact: `/tmp/run/mv-smoke-target-full-records.json`",
+		"- Full-record compare report: `/tmp/run/mv-smoke-full-record-compare.json`",
 		"This run used `--reset-target`",
 	} {
 		if !strings.Contains(report, want) {

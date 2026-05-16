@@ -279,10 +279,12 @@ go run ./cmd/vdbg migrate-and-verify \
   --expand-k 5 \
   --stable-k 2 \
   --boundary-k 1 \
-  --metric cosine
+  --metric cosine \
+  --record-mapping /tmp/vdb-guardian-record-mapping.json \
+  --full-record-compare
 ```
 
-For the committed small fixture and compatible source/target search behavior, the command should print `records_read: 100`, `records_written: 100`, and `matched_queries: 10`. It also writes `<artifact-dir>/<job-id>-diagnostic-report.json` with machine-readable migration counts, fingerprint metrics, artifact paths, safety flags, and quality gate status.
+For the committed small fixture and compatible source/target search behavior, the command should print `records_read: 100`, `records_written: 100`, and `matched_queries: 10`. With `--full-record-compare`, it also writes `<artifact-dir>/<job-id>-source-full-records.json`, `<artifact-dir>/<job-id>-target-full-records.json`, and `<artifact-dir>/<job-id>-full-record-compare.json`. It also writes `<artifact-dir>/<job-id>-diagnostic-report.json` with machine-readable migration counts, fingerprint metrics, artifact paths, safety flags, full-record equality artifact paths, and quality gate status.
 
 ## Real schema-gated Milvus-to-pgvector E2E smoke
 
@@ -422,4 +424,4 @@ scripts/check-migration-stack.sh milvus-port
 
 ## Current limitations
 
-This stack now supports validating the pgvector target-side seed, search, and fingerprint artifact loops, source-side Milvus fixture seeding, search, and fingerprint artifact loops, real Milvus-to-pgvector migration, one-shot migrate-and-verify orchestration, direct source/target fingerprint artifact comparison, live read-only full-record artifact builders, and artifact-only full-record equality comparison. Production checkpointing, automatic full-record compare orchestration inside `migrate-and-verify`, Milvus partitions in real smoke fixtures, and cleanup policies remain future work.
+This stack now supports validating the pgvector target-side seed, search, and fingerprint artifact loops, source-side Milvus fixture seeding, search, and fingerprint artifact loops, real Milvus-to-pgvector migration, one-shot migrate-and-verify orchestration, direct source/target fingerprint artifact comparison, live read-only full-record artifact builders, artifact-only full-record equality comparison, and optional full-record equality orchestration inside `migrate-and-verify --full-record-compare`. Production checkpointing, Milvus partitions in real smoke fixtures, and cleanup policies remain future work.

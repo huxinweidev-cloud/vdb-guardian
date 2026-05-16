@@ -13,13 +13,17 @@ import (
 func TestRenderMigrateAndVerifyDiagnosticJSONIncludesMachineReadableRunContext(t *testing.T) {
 	data, err := RenderMigrateAndVerifyDiagnosticJSON(MigrateAndVerifyDiagnosticReport{
 		MigrateAndVerifyReport: MigrateAndVerifyReport{
-			JobID:                 "mv-smoke",
-			State:                 jobs.StateSucceeded,
-			SourceFingerprintPath: "/tmp/run/mv-smoke-source-fingerprint.json",
-			TargetFingerprintPath: "/tmp/run/mv-smoke-target-fingerprint.json",
-			ResultPath:            "/tmp/run/mv-smoke-result.json",
-			ResetTarget:           true,
-			StrictCount:           true,
+			JobID:                    "mv-smoke",
+			State:                    jobs.StateSucceeded,
+			SourceFingerprintPath:    "/tmp/run/mv-smoke-source-fingerprint.json",
+			TargetFingerprintPath:    "/tmp/run/mv-smoke-target-fingerprint.json",
+			ResultPath:               "/tmp/run/mv-smoke-result.json",
+			ResetTarget:              true,
+			StrictCount:              true,
+			FullRecordCompareEnabled: true,
+			SourceFullRecordPath:     "/tmp/run/mv-smoke-source-full-records.json",
+			TargetFullRecordPath:     "/tmp/run/mv-smoke-target-full-records.json",
+			FullRecordComparePath:    "/tmp/run/mv-smoke-full-record-compare.json",
 			Migration: migration.VectorMigrationResult{
 				SourceCollection: "items",
 				TargetTable:      "items",
@@ -79,6 +83,12 @@ func TestRenderMigrateAndVerifyDiagnosticJSONIncludesMachineReadableRunContext(t
 			ResetTarget bool `json:"reset_target"`
 			StrictCount bool `json:"strict_count"`
 		} `json:"safety"`
+		FullRecordEquality struct {
+			Enabled        bool   `json:"enabled"`
+			SourceArtifact string `json:"source_artifact"`
+			TargetArtifact string `json:"target_artifact"`
+			CompareReport  string `json:"compare_report"`
+		} `json:"full_record_equality"`
 		QualityGates struct {
 			MinConsistencyScore    float64 `json:"min_consistency_score"`
 			MaxFingerprintDistance float64 `json:"max_fingerprint_distance"`
@@ -108,6 +118,9 @@ func TestRenderMigrateAndVerifyDiagnosticJSONIncludesMachineReadableRunContext(t
 	}
 	if !got.Safety.ResetTarget || !got.Safety.StrictCount {
 		t.Fatalf("unexpected safety flags: %+v", got.Safety)
+	}
+	if !got.FullRecordEquality.Enabled || got.FullRecordEquality.SourceArtifact != "/tmp/run/mv-smoke-source-full-records.json" || got.FullRecordEquality.TargetArtifact != "/tmp/run/mv-smoke-target-full-records.json" || got.FullRecordEquality.CompareReport != "/tmp/run/mv-smoke-full-record-compare.json" {
+		t.Fatalf("unexpected full-record equality fields: %+v", got.FullRecordEquality)
 	}
 	if got.QualityGates.MinConsistencyScore != 0.999 || got.QualityGates.MaxFingerprintDistance != 0.001 || !got.QualityGates.Passed {
 		t.Fatalf("unexpected quality gates: %+v", got.QualityGates)

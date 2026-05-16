@@ -57,7 +57,7 @@ Implemented in this scaffold:
 - Tested migration source/target adapter boundary for Milvus reads and pgvector writes.
 - Real Milvus SDK migration reader and pgx-backed pgvector migration writer.
 - `vdbg migrate` real Milvus-to-pgvector migration CLI with optional mapping-driven full-record execution from `map-migration-records` artifacts.
-- `vdbg migrate-and-verify` one-shot migration, strict count validation, quality gates, fingerprint comparison, and Markdown report CLI, with optional `--reset-target` cleanup for disposable smoke runs.
+- `vdbg migrate-and-verify` one-shot migration, strict count validation, quality gates, fingerprint comparison, Markdown/diagnostic reports, and optional `--full-record-compare` full-record equality gate, with optional `--reset-target` cleanup for disposable smoke runs.
 - Synthetic vector dataset generator.
 - Fingerprint artifact builder.
 - Fingerprint engine interface.

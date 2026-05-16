@@ -29,6 +29,7 @@ type migrateAndVerifyOptions struct {
 	StrictCount            bool
 	MinConsistencyScore    float64
 	MaxFingerprintDistance float64
+	FullRecordCompare      bool
 }
 
 type migrateAndVerifyResult struct {
@@ -38,6 +39,10 @@ type migrateAndVerifyResult struct {
 	Verification             jobs.VerificationResult
 	MarkdownReportPath       string
 	DiagnosticJSONReportPath string
+	SourceFullRecordPath     string
+	TargetFullRecordPath     string
+	FullRecordComparePath    string
+	FullRecordCompareErr     error
 }
 
 type migrateAndVerifySteps interface {
@@ -47,6 +52,9 @@ type migrateAndVerifySteps interface {
 	BuildSourceArtifact(ctx context.Context, options migrateAndVerifyOptions, outputPath string) error
 	BuildTargetArtifact(ctx context.Context, options migrateAndVerifyOptions, outputPath string) error
 	Compare(ctx context.Context, options compareArtifactsOptions, compareEngine engine.Engine) (jobs.VerificationResult, error)
+	BuildSourceFullRecordArtifact(ctx context.Context, options migrateAndVerifyOptions, outputPath string) error
+	BuildTargetFullRecordArtifact(ctx context.Context, options migrateAndVerifyOptions, outputPath string) error
+	CompareFullRecords(ctx context.Context, sourcePath, targetPath, outputPath string) error
 }
 
 type realMigrateAndVerifySteps struct{}
@@ -78,6 +86,11 @@ func runMigrateAndVerifyCommand(ctx context.Context, args []string) error {
 	fmt.Printf("result: %s\n", result.Verification.ResultPath)
 	fmt.Printf("report: %s\n", result.MarkdownReportPath)
 	fmt.Printf("diagnostic_report: %s\n", result.DiagnosticJSONReportPath)
+	if result.FullRecordComparePath != "" {
+		fmt.Printf("source_full_records: %s\n", result.SourceFullRecordPath)
+		fmt.Printf("target_full_records: %s\n", result.TargetFullRecordPath)
+		fmt.Printf("full_record_compare: %s\n", result.FullRecordComparePath)
+	}
 	return nil
 }
 
@@ -125,32 +138,41 @@ func runMigrateAndVerifyWithSteps(ctx context.Context, args []string, steps migr
 	if err != nil {
 		return migrateAndVerifyResult{}, err
 	}
+	fullRecordPaths, fullRecordErr := runMigrateAndVerifyFullRecordCompare(ctx, options, steps)
 	reportPath := filepath.Join(options.ArtifactDir, options.JobID+"-report.md")
 	if err := writeMigrateAndVerifyMarkdownReport(reportPath, reporting.MigrateAndVerifyReport{
-		JobID:                 options.JobID,
-		State:                 verification.State,
-		Migration:             migrationResult,
-		Output:                verification.Output,
-		SourceFingerprintPath: sourcePath,
-		TargetFingerprintPath: targetPath,
-		ResultPath:            verification.ResultPath,
-		ResetTarget:           options.ResetTarget,
-		StrictCount:           options.StrictCount,
+		JobID:                    options.JobID,
+		State:                    verification.State,
+		Migration:                migrationResult,
+		Output:                   verification.Output,
+		SourceFingerprintPath:    sourcePath,
+		TargetFingerprintPath:    targetPath,
+		ResultPath:               verification.ResultPath,
+		ResetTarget:              options.ResetTarget,
+		StrictCount:              options.StrictCount,
+		FullRecordCompareEnabled: options.FullRecordCompare,
+		SourceFullRecordPath:     fullRecordPaths.Source,
+		TargetFullRecordPath:     fullRecordPaths.Target,
+		FullRecordComparePath:    fullRecordPaths.Compare,
 	}); err != nil {
 		return migrateAndVerifyResult{}, err
 	}
 	diagnosticReportPath := filepath.Join(options.ArtifactDir, options.JobID+"-diagnostic-report.json")
 	if err := writeMigrateAndVerifyDiagnosticJSONReport(diagnosticReportPath, reporting.MigrateAndVerifyDiagnosticReport{
 		MigrateAndVerifyReport: reporting.MigrateAndVerifyReport{
-			JobID:                 options.JobID,
-			State:                 verification.State,
-			Migration:             migrationResult,
-			Output:                verification.Output,
-			SourceFingerprintPath: sourcePath,
-			TargetFingerprintPath: targetPath,
-			ResultPath:            verification.ResultPath,
-			ResetTarget:           options.ResetTarget,
-			StrictCount:           options.StrictCount,
+			JobID:                    options.JobID,
+			State:                    verification.State,
+			Migration:                migrationResult,
+			Output:                   verification.Output,
+			SourceFingerprintPath:    sourcePath,
+			TargetFingerprintPath:    targetPath,
+			ResultPath:               verification.ResultPath,
+			ResetTarget:              options.ResetTarget,
+			StrictCount:              options.StrictCount,
+			FullRecordCompareEnabled: options.FullRecordCompare,
+			SourceFullRecordPath:     fullRecordPaths.Source,
+			TargetFullRecordPath:     fullRecordPaths.Target,
+			FullRecordComparePath:    fullRecordPaths.Compare,
 		},
 		MinConsistencyScore:    options.MinConsistencyScore,
 		MaxFingerprintDistance: options.MaxFingerprintDistance,
@@ -160,14 +182,49 @@ func runMigrateAndVerifyWithSteps(ctx context.Context, args []string, steps migr
 	if err := validateMigrateAndVerifyThresholds(options, verification, reportPath); err != nil {
 		return migrateAndVerifyResult{}, err
 	}
-	return migrateAndVerifyResult{
+	result := migrateAndVerifyResult{
 		Migration:                migrationResult,
 		SourceFingerprintPath:    sourcePath,
 		TargetFingerprintPath:    targetPath,
 		Verification:             verification,
 		MarkdownReportPath:       reportPath,
 		DiagnosticJSONReportPath: diagnosticReportPath,
-	}, nil
+		SourceFullRecordPath:     fullRecordPaths.Source,
+		TargetFullRecordPath:     fullRecordPaths.Target,
+		FullRecordComparePath:    fullRecordPaths.Compare,
+		FullRecordCompareErr:     fullRecordErr,
+	}
+	if fullRecordErr != nil {
+		return result, fullRecordErr
+	}
+	return result, nil
+}
+
+type migrateAndVerifyFullRecordPaths struct {
+	Source  string
+	Target  string
+	Compare string
+}
+
+func runMigrateAndVerifyFullRecordCompare(ctx context.Context, options migrateAndVerifyOptions, steps migrateAndVerifySteps) (migrateAndVerifyFullRecordPaths, error) {
+	if !options.FullRecordCompare {
+		return migrateAndVerifyFullRecordPaths{}, nil
+	}
+	paths := migrateAndVerifyFullRecordPaths{
+		Source:  filepath.Join(options.ArtifactDir, options.JobID+"-source-full-records.json"),
+		Target:  filepath.Join(options.ArtifactDir, options.JobID+"-target-full-records.json"),
+		Compare: filepath.Join(options.ArtifactDir, options.JobID+"-full-record-compare.json"),
+	}
+	if err := steps.BuildSourceFullRecordArtifact(ctx, options, paths.Source); err != nil {
+		return migrateAndVerifyFullRecordPaths{}, err
+	}
+	if err := steps.BuildTargetFullRecordArtifact(ctx, options, paths.Target); err != nil {
+		return migrateAndVerifyFullRecordPaths{}, err
+	}
+	if err := steps.CompareFullRecords(ctx, paths.Source, paths.Target, paths.Compare); err != nil {
+		return paths, err
+	}
+	return paths, nil
 }
 
 func writeMigrateAndVerifyMarkdownReport(path string, report reporting.MigrateAndVerifyReport) error {
@@ -233,6 +290,7 @@ func parseMigrateAndVerifyOptions(args []string) (migrateAndVerifyOptions, error
 	var metric string
 	var resetTarget bool
 	var strictCount bool
+	var fullRecordCompare bool
 	var minConsistencyScore float64
 	var maxFingerprintDistance float64
 	flagSet.StringVar(&fixturePath, "fixture", "", "path to a synthetic fixture JSON file containing verification queries")
@@ -256,6 +314,7 @@ func parseMigrateAndVerifyOptions(args []string) (migrateAndVerifyOptions, error
 	flagSet.StringVar(&metric, "metric", connectors.MilvusMetricCosine, "metric for both Milvus and pgvector artifact searches: cosine or l2")
 	flagSet.BoolVar(&resetTarget, "reset-target", false, "truncate the pgvector target table before migration to avoid stale-row verification")
 	flagSet.BoolVar(&strictCount, "strict-count", false, "fail when pgvector target row count does not equal records written after migration")
+	flagSet.BoolVar(&fullRecordCompare, "full-record-compare", false, "build live full-record artifacts and compare source/target record equality after migration")
 	flagSet.Float64Var(&minConsistencyScore, "min-consistency-score", 0, "fail when consistency_score is below this threshold")
 	flagSet.Float64Var(&maxFingerprintDistance, "max-fingerprint-distance", 1, "fail when fingerprint_distance is above this threshold")
 	if err := flagSet.Parse(args); err != nil {
@@ -266,6 +325,9 @@ func parseMigrateAndVerifyOptions(args []string) (migrateAndVerifyOptions, error
 	}
 	if err := validateMigrateAndVerifyThresholdFields(minConsistencyScore, maxFingerprintDistance); err != nil {
 		return migrateAndVerifyOptions{}, err
+	}
+	if fullRecordCompare && recordMappingPath == "" {
+		return migrateAndVerifyOptions{}, errors.New("record-mapping is required when full-record-compare is enabled")
 	}
 	return migrateAndVerifyOptions{
 		FixturePath: fixturePath,
@@ -301,6 +363,7 @@ func parseMigrateAndVerifyOptions(args []string) (migrateAndVerifyOptions, error
 		StrictCount:            strictCount,
 		MinConsistencyScore:    minConsistencyScore,
 		MaxFingerprintDistance: maxFingerprintDistance,
+		FullRecordCompare:      fullRecordCompare,
 	}, nil
 }
 
@@ -372,6 +435,33 @@ func (realMigrateAndVerifySteps) Compare(ctx context.Context, options compareArt
 		compareEngine = engine.NewPythonRunner(pythonPath, pythonWorkDir)
 	}
 	return runCompareArtifacts(ctx, options, compareEngine)
+}
+
+func (realMigrateAndVerifySteps) BuildSourceFullRecordArtifact(ctx context.Context, options migrateAndVerifyOptions, outputPath string) error {
+	return runBuildMilvusRecordArtifactCommand(ctx, []string{
+		"--milvus-address", options.Migrate.MilvusConfig.Address,
+		"--record-mapping", options.Migrate.RecordMappingPath,
+		"--output", outputPath,
+	})
+}
+
+func (realMigrateAndVerifySteps) BuildTargetFullRecordArtifact(ctx context.Context, options migrateAndVerifyOptions, outputPath string) error {
+	return runBuildPGVectorRecordArtifactCommand(ctx, []string{
+		"--pgvector-connection-url", options.Migrate.PGVectorConfig.ConnectionURL,
+		"--record-mapping", options.Migrate.RecordMappingPath,
+		"--output", outputPath,
+	})
+}
+
+func (realMigrateAndVerifySteps) CompareFullRecords(ctx context.Context, sourcePath, targetPath, outputPath string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return runCompareFullRecordsCommand([]string{
+		"--source", sourcePath,
+		"--target", targetPath,
+		"--output", outputPath,
+	})
 }
 
 func validateMigrateAndVerifyThresholdFields(minConsistencyScore, maxFingerprintDistance float64) error {

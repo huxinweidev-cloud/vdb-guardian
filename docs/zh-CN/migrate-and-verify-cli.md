@@ -9,6 +9,7 @@
 构建 Milvus 源端指纹产物
 构建 pgvector 目标端指纹产物
 通过 Python 引擎对产物进行验证比对
+可选：构建 Milvus/pgvector live full-record artifact，并执行本地 full-record equality 对比
 生成 Markdown 报告
 生成机器可读的诊断 JSON 报告
 ```
@@ -40,6 +41,7 @@ go run ./cmd/vdbg migrate-and-verify \
   --metric cosine \
   --reset-target \
   --strict-count \
+  --full-record-compare \
   --min-consistency-score 0.999 \
   --max-fingerprint-distance 0.001
 ```
@@ -63,6 +65,9 @@ target_fingerprint: /tmp/vdb-guardian-run/migrate-and-verify-smoke-target-finger
 result: /tmp/vdb-guardian-run/migrate-and-verify-smoke-result.json
 report: /tmp/vdb-guardian-run/migrate-and-verify-smoke-report.md
 diagnostic_report: /tmp/vdb-guardian-run/migrate-and-verify-smoke-diagnostic-report.json
+source_full_records: /tmp/vdb-guardian-run/migrate-and-verify-smoke-source-full-records.json
+target_full_records: /tmp/vdb-guardian-run/migrate-and-verify-smoke-target-full-records.json
+full_record_compare: /tmp/vdb-guardian-run/migrate-and-verify-smoke-full-record-compare.json
 ```
 
 ## 必填标志 (Required flags)
@@ -72,7 +77,7 @@ diagnostic_report: /tmp/vdb-guardian-run/migrate-and-verify-smoke-diagnostic-rep
 - `--pgvector-connection-url`: PostgreSQL 连接 URL。请在日志和文档中对该信息进行脱敏处理。
 - `--artifact-dir`: 用于存放源端、目标端和比对结果产物文件的目录。
 - `--dimension`: 预期的向量维度。
-- `--record-mapping`: 可选的 `vdbg map-migration-records` JSON 路径。提供后，迁移步骤会在指纹验证前根据 mapping artifact 执行 full-record migration。
+- `--record-mapping`: 可选的 `vdbg map-migration-records` JSON 路径。提供后，迁移步骤会在指纹验证前根据 mapping artifact 执行 full-record migration。启用 `--full-record-compare` 时该参数必填。
 
 ## 默认值 (Defaults)
 
@@ -91,6 +96,7 @@ diagnostic_report: /tmp/vdb-guardian-run/migrate-and-verify-smoke-diagnostic-rep
 - `--metric`: `cosine`
 - `--reset-target`: `false`。启用后会在迁移前清空 pgvector 目标表。
 - `--strict-count`: `false`。启用后，如果迁移后的 pgvector 目标表行数不等于 `records_written`，命令会失败。
+- `--full-record-compare`: `false`。启用后，会基于 `--record-mapping` 构建 Milvus/pgvector live full-record artifact，执行本地 `compare-full-records`，并在 Markdown / diagnostic JSON 中记录相关路径；即使 equality gate 失败，也会先保留诊断报告再返回非零错误。
 - `--min-consistency-score`: `0`。生成报告后，如果 `consistency_score` 低于该阈值，命令会失败。
 - `--max-fingerprint-distance`: `1`。生成报告后，如果 `fingerprint_distance` 高于该阈值，命令会失败。
 
@@ -108,6 +114,7 @@ diagnostic_report: /tmp/vdb-guardian-run/migrate-and-verify-smoke-diagnostic-rep
 - 可选 `--reset-target` 清理能力：迁移前清空 pgvector 目标表。
 - 可选 `--strict-count` 校验能力：迁移后目标表行数不匹配时直接失败。
 - 可选 `--min-consistency-score` 与 `--max-fingerprint-distance` 质量门禁：生成 Markdown 报告后，如果指标不达标则使命令失败。
+- 可选 `--full-record-compare` equality gate：基于同一个 passing record mapping artifact 构建 source/target full-record artifacts 并执行本地 equality compare。
 - 为整体编排和失败短路（异常阻断）逻辑编写的注入式步骤单元测试。
 
 ## 本地冒烟验证示例
@@ -175,6 +182,12 @@ missing_target_queries: 0
     "reset_target": true,
     "strict_count": true
   },
+  "full_record_equality": {
+    "enabled": true,
+    "source_artifact": "/tmp/vdb-guardian-run/migrate-and-verify-smoke-source-full-records.json",
+    "target_artifact": "/tmp/vdb-guardian-run/migrate-and-verify-smoke-target-full-records.json",
+    "compare_report": "/tmp/vdb-guardian-run/migrate-and-verify-smoke-full-record-compare.json"
+  },
   "quality_gates": {
     "min_consistency_score": 0.999,
     "max_fingerprint_distance": 0.001,
@@ -193,6 +206,8 @@ missing_target_queries: 0
 ## 安全提示
 
 请优先在本地迁移环境栈或临时测试数据库上运行此命令。
+
+Full-record compare artifacts 可能包含 record IDs、scalar 字段、dynamic metadata、partition 值和 vector hashes。请只把 `--artifact-dir` 指向经过批准的安全目录，不要把生成的 `0600` artifact 内容粘贴到聊天或日志中，诊断完成后及时清理。
 
 默认情况下，迁移步骤使用 pgvector 的 upsert 语义，且**不会删除**目标端陈旧的无效记录。对于一次性本地冒烟或临时测试库，可以传入 `--reset-target`，让命令在迁移前清空目标表。除非明确需要破坏性清理，否则不要在生产表上启用该选项。
 

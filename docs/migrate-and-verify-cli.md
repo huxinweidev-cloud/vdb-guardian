@@ -9,7 +9,8 @@ migrate Milvus -> pgvector
 build Milvus source fingerprint artifact
 build pgvector target fingerprint artifact
 compare artifacts through the Python engine
-render a Markdown report
+optionally build source/target full-record artifacts and compare full-record equality
+render Markdown and diagnostic JSON reports
 ```
 
 The command assumes both databases are already running and reachable. It does not start Docker or provision services.
@@ -39,6 +40,7 @@ go run ./cmd/vdbg migrate-and-verify \
   --metric cosine \
   --reset-target \
   --strict-count \
+  --full-record-compare \
   --min-consistency-score 0.999 \
   --max-fingerprint-distance 0.001
 ```
@@ -62,6 +64,9 @@ target_fingerprint: /tmp/vdb-guardian-run/migrate-and-verify-smoke-target-finger
 result: /tmp/vdb-guardian-run/migrate-and-verify-smoke-result.json
 report: /tmp/vdb-guardian-run/migrate-and-verify-smoke-report.md
 diagnostic_report: /tmp/vdb-guardian-run/migrate-and-verify-smoke-diagnostic-report.json
+source_full_records: /tmp/vdb-guardian-run/migrate-and-verify-smoke-source-full-records.json
+target_full_records: /tmp/vdb-guardian-run/migrate-and-verify-smoke-target-full-records.json
+full_record_compare: /tmp/vdb-guardian-run/migrate-and-verify-smoke-full-record-compare.json
 ```
 
 ## Required flags
@@ -71,7 +76,7 @@ diagnostic_report: /tmp/vdb-guardian-run/migrate-and-verify-smoke-diagnostic-rep
 - `--pgvector-connection-url`: PostgreSQL connection URL. Redact this in logs and docs.
 - `--artifact-dir`: directory for source, target, and result artifacts.
 - `--dimension`: expected vector dimension.
-- `--record-mapping`: optional `vdbg map-migration-records` JSON path. When supplied, the migration step uses the mapping artifact for full-record execution before fingerprint verification.
+- `--record-mapping`: optional `vdbg map-migration-records` JSON path. When supplied, the migration step uses the mapping artifact for full-record execution before fingerprint verification. Required when `--full-record-compare` is enabled.
 
 ## Defaults
 
@@ -90,6 +95,7 @@ diagnostic_report: /tmp/vdb-guardian-run/migrate-and-verify-smoke-diagnostic-rep
 - `--metric`: `cosine`
 - `--reset-target`: `false`. When enabled, the command truncates the pgvector target table before migration.
 - `--strict-count`: `false`. When enabled, the command fails if the pgvector target row count does not equal records written after migration.
+- `--full-record-compare`: `false`. When enabled, the command builds live Milvus and pgvector full-record artifacts from `--record-mapping`, runs `compare-full-records`, includes full-record equality paths in reports, and exits non-zero on equality failure after preserving diagnostics.
 - `--min-consistency-score`: `0`. The command fails after report generation when `consistency_score` is below this threshold.
 - `--max-fingerprint-distance`: `1`. The command fails after report generation when `fingerprint_distance` is above this threshold.
 
@@ -107,6 +113,7 @@ Implemented:
 - Optional `--reset-target` cleanup to truncate the pgvector target table before migration.
 - Optional `--strict-count` validation to fail on target row count mismatches after migration.
 - Optional `--min-consistency-score` and `--max-fingerprint-distance` quality gates that fail the command after writing the Markdown report.
+- Optional `--full-record-compare` gate that builds source/target full-record artifacts and runs local full-record equality comparison from the same passing record mapping artifact.
 - Injected-step unit tests for orchestration and failure short-circuiting.
 
 ## Verified local smoke
@@ -174,6 +181,12 @@ The generated diagnostic report artifact is shaped like:
     "reset_target": true,
     "strict_count": true
   },
+  "full_record_equality": {
+    "enabled": true,
+    "source_artifact": "/tmp/vdb-guardian-run/migrate-and-verify-smoke-source-full-records.json",
+    "target_artifact": "/tmp/vdb-guardian-run/migrate-and-verify-smoke-target-full-records.json",
+    "compare_report": "/tmp/vdb-guardian-run/migrate-and-verify-smoke-full-record-compare.json"
+  },
   "quality_gates": {
     "min_consistency_score": 0.999,
     "max_fingerprint_distance": 0.001,
@@ -192,6 +205,8 @@ Not implemented yet:
 ## Safety notes
 
 Run this first against the local migration stack or disposable test databases.
+
+Full-record compare artifacts can contain record IDs, scalar fields, dynamic metadata, partition values, and vector hashes. Write `--artifact-dir` only to an approved secured location, keep the generated `0600` artifacts out of chat/log output, and clean them up when diagnostics are no longer needed.
 
 By default, the migration step uses pgvector upsert semantics and does not delete stale target records. Pass `--reset-target` for disposable smoke runs where the target table should be truncated before migration. Do not enable it against production tables unless destructive cleanup is explicitly intended.
 

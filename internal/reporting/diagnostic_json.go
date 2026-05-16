@@ -20,14 +20,15 @@ type MigrateAndVerifyDiagnosticReport struct {
 }
 
 type migrateAndVerifyDiagnosticJSON struct {
-	SchemaVersion string                              `json:"schema_version"`
-	JobID         string                              `json:"job_id"`
-	State         string                              `json:"state"`
-	Migration     migrateAndVerifyDiagnosticMigration `json:"migration"`
-	Verification  migrateAndVerifyDiagnosticVerify    `json:"verification"`
-	Artifacts     migrateAndVerifyDiagnosticArtifacts `json:"artifacts"`
-	Safety        migrateAndVerifyDiagnosticSafety    `json:"safety"`
-	QualityGates  migrateAndVerifyDiagnosticGates     `json:"quality_gates"`
+	SchemaVersion      string                                       `json:"schema_version"`
+	JobID              string                                       `json:"job_id"`
+	State              string                                       `json:"state"`
+	Migration          migrateAndVerifyDiagnosticMigration          `json:"migration"`
+	Verification       migrateAndVerifyDiagnosticVerify             `json:"verification"`
+	Artifacts          migrateAndVerifyDiagnosticArtifacts          `json:"artifacts"`
+	Safety             migrateAndVerifyDiagnosticSafety             `json:"safety"`
+	FullRecordEquality migrateAndVerifyDiagnosticFullRecordEquality `json:"full_record_equality"`
+	QualityGates       migrateAndVerifyDiagnosticGates              `json:"quality_gates"`
 }
 
 type migrateAndVerifyDiagnosticMigration struct {
@@ -64,6 +65,13 @@ type migrateAndVerifyDiagnosticSafety struct {
 	StrictCount bool `json:"strict_count"`
 }
 
+type migrateAndVerifyDiagnosticFullRecordEquality struct {
+	Enabled        bool   `json:"enabled"`
+	SourceArtifact string `json:"source_artifact,omitempty"`
+	TargetArtifact string `json:"target_artifact,omitempty"`
+	CompareReport  string `json:"compare_report,omitempty"`
+}
+
 type migrateAndVerifyDiagnosticGates struct {
 	MinConsistencyScore    float64 `json:"min_consistency_score"`
 	MaxFingerprintDistance float64 `json:"max_fingerprint_distance"`
@@ -83,6 +91,9 @@ func RenderMigrateAndVerifyDiagnosticJSON(report MigrateAndVerifyDiagnosticRepor
 	}
 	if report.SourceFingerprintPath == "" || report.TargetFingerprintPath == "" || report.ResultPath == "" {
 		return nil, fmt.Errorf("migrate-and-verify diagnostic report artifact paths must not be empty")
+	}
+	if report.FullRecordCompareEnabled && (report.SourceFullRecordPath == "" || report.TargetFullRecordPath == "" || report.FullRecordComparePath == "") {
+		return nil, fmt.Errorf("migrate-and-verify diagnostic full-record artifact paths must not be empty when full-record compare is enabled")
 	}
 
 	metrics := report.Output.Metrics
@@ -117,6 +128,12 @@ func RenderMigrateAndVerifyDiagnosticJSON(report MigrateAndVerifyDiagnosticRepor
 		Safety: migrateAndVerifyDiagnosticSafety{
 			ResetTarget: report.ResetTarget,
 			StrictCount: report.StrictCount,
+		},
+		FullRecordEquality: migrateAndVerifyDiagnosticFullRecordEquality{
+			Enabled:        report.FullRecordCompareEnabled,
+			SourceArtifact: report.SourceFullRecordPath,
+			TargetArtifact: report.TargetFullRecordPath,
+			CompareReport:  report.FullRecordComparePath,
 		},
 		QualityGates: migrateAndVerifyDiagnosticGates{
 			MinConsistencyScore:    report.MinConsistencyScore,
