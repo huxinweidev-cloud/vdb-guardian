@@ -2,6 +2,7 @@ package migration
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"testing"
@@ -63,6 +64,18 @@ func TestMilvusSDKSeedDBCreateCollectionSkipsDropWhenMissing(t *testing.T) {
 	}
 }
 
+func TestMilvusSDKSeedDBCreateCollectionCarriesComplexFlag(t *testing.T) {
+	client := &fakeMilvusSeedSDKClient{}
+	db := connectedFakeMilvusSDKSeedDB(client)
+
+	if err := db.CreateCollection(context.Background(), milvusCreateCollectionRequest{Collection: "items", IDField: "id", VectorField: "embedding", Dimension: 8, Metric: "cosine", Complex: true}); err != nil {
+		t.Fatalf("CreateCollection returned error: %v", err)
+	}
+	if !client.created.Complex {
+		t.Fatalf("expected complex create request, got %#v", client.created)
+	}
+}
+
 func TestMilvusSDKSeedDBInsertRecordsConvertsColumnsAndFlushes(t *testing.T) {
 	client := &fakeMilvusSeedSDKClient{}
 	db := connectedFakeMilvusSDKSeedDB(client)
@@ -79,15 +92,127 @@ func TestMilvusSDKSeedDBInsertRecordsConvertsColumnsAndFlushes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InsertRecords returned error: %v", err)
 	}
-	if client.inserted.Collection != "items" || client.inserted.IDField != "id" || client.inserted.VectorField != "embedding" {
-		t.Fatalf("unexpected insert request: %#v", client.inserted)
+	if len(client.inserted) != 1 {
+		t.Fatalf("expected one insert request, got %d", len(client.inserted))
 	}
-	if !reflect.DeepEqual(client.inserted.IDs, []string{"vec-1", "vec-2"}) {
-		t.Fatalf("unexpected ids: %#v", client.inserted.IDs)
+	inserted := client.inserted[0]
+	if inserted.Collection != "items" || inserted.IDField != "id" || inserted.VectorField != "embedding" {
+		t.Fatalf("unexpected insert request: %#v", inserted)
 	}
-	assertMilvusSeedFloat32MatrixAlmostEqual(t, client.inserted.Vectors, [][]float32{{0.1, 0.2}, {0.3, 0.4}})
+	if !reflect.DeepEqual(inserted.IDs, []string{"vec-1", "vec-2"}) {
+		t.Fatalf("unexpected ids: %#v", inserted.IDs)
+	}
+	assertMilvusSeedFloat32MatrixAlmostEqual(t, inserted.Vectors, [][]float32{{0.1, 0.2}, {0.3, 0.4}})
 	if !client.flushed {
 		t.Fatal("expected collection to be flushed after insert")
+	}
+}
+
+func TestMilvusSDKSeedDBInsertRecordsConvertsComplexFieldsAndPartitions(t *testing.T) {
+	client := &fakeMilvusSeedSDKClient{}
+	db := connectedFakeMilvusSDKSeedDB(client)
+	titleOne := "One"
+	titleTwo := "Two"
+	priceOne := 12.5
+	priceTwo := 0.75
+	quantityOne := int64(7)
+	quantityTwo := int64(3)
+	active := true
+	inactive := false
+	category := "books"
+	partitionA := "tenant_a"
+	partitionB := "tenant_b"
+
+	err := db.InsertRecords(context.Background(), milvusInsertRecordsRequest{
+		Collection:  "items",
+		IDField:     "id",
+		VectorField: "embedding",
+		Records: []milvusSeedRecord{
+			{
+				ID:              "vec-1",
+				Vector:          []float64{0.1, 0.2},
+				Title:           &titleOne,
+				Price:           &priceOne,
+				Quantity:        &quantityOne,
+				Active:          &active,
+				Category:        &category,
+				DynamicMetadata: map[string]any{"tags": []any{"a", "b"}},
+				Partition:       &partitionA,
+			},
+			{
+				ID:              "vec-2",
+				Vector:          []float64{0.3, 0.4},
+				Title:           &titleTwo,
+				Price:           &priceTwo,
+				Quantity:        &quantityTwo,
+				Active:          &inactive,
+				DynamicMetadata: map[string]any{"tags": []any{"c"}},
+				Partition:       &partitionB,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("InsertRecords returned error: %v", err)
+	}
+	if !reflect.DeepEqual(client.partitionRequests, []string{"tenant_a", "tenant_b"}) {
+		t.Fatalf("unexpected partitions: %#v", client.partitionRequests)
+	}
+	if len(client.inserted) != 2 {
+		t.Fatalf("expected one insert per partition, got %d", len(client.inserted))
+	}
+	first := client.inserted[0]
+	if first.Partition != "tenant_a" || !first.Complex {
+		t.Fatalf("unexpected first partition request: %#v", first)
+	}
+	if !reflect.DeepEqual(first.IDs, []string{"vec-1"}) || !reflect.DeepEqual(first.Titles, []string{"One"}) {
+		t.Fatalf("unexpected first scalar columns: %#v", first)
+	}
+	if !reflect.DeepEqual(first.Prices, []float64{12.5}) || !reflect.DeepEqual(first.Quantities, []int64{7}) || !reflect.DeepEqual(first.Actives, []bool{true}) || !reflect.DeepEqual(first.Categories, []string{"books"}) {
+		t.Fatalf("unexpected first typed columns: %#v", first)
+	}
+	assertMilvusSeedMetadata(t, first.Metadata[0], map[string]any{milvusSeedPartitionMetadataField: "tenant_a", "tags": []any{"a", "b"}})
+	second := client.inserted[1]
+	if second.Partition != "tenant_b" || !second.Complex {
+		t.Fatalf("unexpected second partition request: %#v", second)
+	}
+	if !reflect.DeepEqual(second.Categories, []string{""}) {
+		t.Fatalf("expected nil category to use empty-string nullable fallback, got %#v", second.Categories)
+	}
+	assertMilvusSeedMetadata(t, second.Metadata[0], map[string]any{milvusSeedPartitionMetadataField: "tenant_b", "tags": []any{"c"}})
+	if !client.flushed {
+		t.Fatal("expected collection to be flushed after partition inserts")
+	}
+}
+
+func TestMilvusSDKSeedDBInsertRecordsPreservesMixedPartitionAndDefaultRecords(t *testing.T) {
+	client := &fakeMilvusSeedSDKClient{}
+	db := connectedFakeMilvusSDKSeedDB(client)
+	partition := "tenant_a"
+	title := "Partitioned"
+
+	err := db.InsertRecords(context.Background(), milvusInsertRecordsRequest{
+		Collection:  "items",
+		IDField:     "id",
+		VectorField: "embedding",
+		Records: []milvusSeedRecord{
+			{ID: "vec-default", Vector: []float64{0.1, 0.2}},
+			{ID: "vec-partitioned", Vector: []float64{0.3, 0.4}, Title: &title, Partition: &partition},
+		},
+	})
+	if err != nil {
+		t.Fatalf("InsertRecords returned error: %v", err)
+	}
+	if !reflect.DeepEqual(client.partitionRequests, []string{"tenant_a"}) {
+		t.Fatalf("unexpected partitions: %#v", client.partitionRequests)
+	}
+	if len(client.inserted) != 2 {
+		t.Fatalf("expected default plus partition insert, got %d", len(client.inserted))
+	}
+	if client.inserted[0].Partition != "" || !reflect.DeepEqual(client.inserted[0].IDs, []string{"vec-default"}) {
+		t.Fatalf("unexpected default insert: %#v", client.inserted[0])
+	}
+	if client.inserted[1].Partition != "tenant_a" || !reflect.DeepEqual(client.inserted[1].IDs, []string{"vec-partitioned"}) {
+		t.Fatalf("unexpected partition insert: %#v", client.inserted[1])
 	}
 }
 
@@ -138,13 +263,14 @@ type fakeMilvusSeedSDKClient struct {
 	hasCollection bool
 	err           error
 
-	dropCalled   bool
-	indexCreated bool
-	loaded       bool
-	flushed      bool
-	closed       bool
-	created      milvusSDKSeedCreateCollectionRequest
-	inserted     milvusSDKSeedInsertRequest
+	dropCalled        bool
+	indexCreated      bool
+	loaded            bool
+	flushed           bool
+	closed            bool
+	partitionRequests []string
+	created           milvusSDKSeedCreateCollectionRequest
+	inserted          []milvusSDKSeedInsertRequest
 }
 
 func (c *fakeMilvusSeedSDKClient) HasCollection(ctx context.Context, collection string) (bool, error) {
@@ -170,6 +296,14 @@ func (c *fakeMilvusSeedSDKClient) CreateCollection(ctx context.Context, req milv
 	return nil
 }
 
+func (c *fakeMilvusSeedSDKClient) CreatePartition(ctx context.Context, collection string, partition string) error {
+	if c.err != nil {
+		return c.err
+	}
+	c.partitionRequests = append(c.partitionRequests, partition)
+	return nil
+}
+
 func (c *fakeMilvusSeedSDKClient) CreateIndex(ctx context.Context, collection string, vectorField string, metric string) error {
 	if c.err != nil {
 		return c.err
@@ -190,7 +324,7 @@ func (c *fakeMilvusSeedSDKClient) Insert(ctx context.Context, req milvusSDKSeedI
 	if c.err != nil {
 		return c.err
 	}
-	c.inserted = req
+	c.inserted = append(c.inserted, req)
 	return nil
 }
 
@@ -224,6 +358,17 @@ func assertMilvusSeedFloat32MatrixAlmostEqual(t *testing.T, got [][]float32, wan
 				t.Fatalf("vector[%d][%d] mismatch: got %f want %f", row, col, got[row][col], want[row][col])
 			}
 		}
+	}
+}
+
+func assertMilvusSeedMetadata(t *testing.T, got []byte, want map[string]any) {
+	t.Helper()
+	var decoded map[string]any
+	if err := json.Unmarshal(got, &decoded); err != nil {
+		t.Fatalf("metadata is not valid JSON: %v", err)
+	}
+	if !reflect.DeepEqual(decoded, want) {
+		t.Fatalf("unexpected metadata: %#v want %#v", decoded, want)
 	}
 }
 

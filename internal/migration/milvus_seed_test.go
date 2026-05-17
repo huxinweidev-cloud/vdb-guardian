@@ -105,6 +105,46 @@ func TestMilvusSeederSeedCreatesCollectionAndInsertsRecords(t *testing.T) {
 	}
 }
 
+func TestMilvusSeederSeedPassesComplexFixtureFields(t *testing.T) {
+	db := &fakeMilvusSeedDB{}
+	seeder := mustMilvusSeeder(t, db, MilvusSeederConfig{Dimension: 3})
+
+	_, err := seeder.Seed(context.Background(), complexSyntheticMilvusSeedDataset())
+	if err != nil {
+		t.Fatalf("Seed returned error: %v", err)
+	}
+
+	insert := db.insertCalls[0]
+	if len(insert.Records) != 2 {
+		t.Fatalf("expected two records, got %d", len(insert.Records))
+	}
+	first := insert.Records[0]
+	if first.Title == nil || *first.Title != "One" {
+		t.Fatalf("unexpected title: %#v", first.Title)
+	}
+	if first.Price == nil || *first.Price != 12.5 {
+		t.Fatalf("unexpected price: %#v", first.Price)
+	}
+	if first.Quantity == nil || *first.Quantity != 7 {
+		t.Fatalf("unexpected quantity: %#v", first.Quantity)
+	}
+	if first.Active == nil || *first.Active != true {
+		t.Fatalf("unexpected active: %#v", first.Active)
+	}
+	if first.Category == nil || *first.Category != "books" {
+		t.Fatalf("unexpected category: %#v", first.Category)
+	}
+	if !reflect.DeepEqual(first.DynamicMetadata, map[string]any{"tags": []any{"a", "b"}, "nested": map[string]any{"rank": float64(1)}}) {
+		t.Fatalf("unexpected dynamic metadata: %#v", first.DynamicMetadata)
+	}
+	if first.Partition == nil || *first.Partition != "tenant_a" {
+		t.Fatalf("unexpected partition: %#v", first.Partition)
+	}
+	if insert.Records[1].Category != nil {
+		t.Fatalf("expected nil category to remain nil, got %#v", insert.Records[1].Category)
+	}
+}
+
 func TestMilvusSeederSeedRejectsInvalidDataset(t *testing.T) {
 	seeder := mustMilvusSeeder(t, &fakeMilvusSeedDB{}, MilvusSeederConfig{Dimension: 3})
 	tests := []struct {
@@ -229,6 +269,53 @@ func syntheticMilvusSeedDataset() fixtures.SyntheticDataset {
 	}
 }
 
+func complexSyntheticMilvusSeedDataset() fixtures.SyntheticDataset {
+	titleOne := "One"
+	titleTwo := "Two"
+	priceOne := 12.5
+	priceTwo := 0.75
+	quantityOne := int64(7)
+	quantityTwo := int64(3)
+	active := true
+	inactive := false
+	category := "books"
+	partitionA := "tenant_a"
+	partitionB := "tenant_b"
+	return fixtures.SyntheticDataset{
+		Seed:        42,
+		Dimension:   3,
+		RecordCount: 2,
+		QueryCount:  1,
+		Metric:      fixtures.MetricCosine,
+		Records: []fixtures.SyntheticVector{
+			{
+				ID:              "vec-000001",
+				Vector:          []float64{0.1, 0.2, 0.3},
+				Title:           &titleOne,
+				Price:           &priceOne,
+				Quantity:        &quantityOne,
+				Active:          &active,
+				Category:        &category,
+				DynamicMetadata: map[string]any{"tags": []any{"a", "b"}, "nested": map[string]any{"rank": float64(1)}},
+				Partition:       &partitionA,
+			},
+			{
+				ID:              "vec-000002",
+				Vector:          []float64{0.4, 0.5, 0.6},
+				Title:           &titleTwo,
+				Price:           &priceTwo,
+				Quantity:        &quantityTwo,
+				Active:          &inactive,
+				DynamicMetadata: map[string]any{"tags": []any{"c"}},
+				Partition:       &partitionB,
+			},
+		},
+		Queries: []fixtures.SyntheticVector{
+			{ID: "query-000001", Vector: []float64{0.7, 0.8, 0.9}},
+		},
+	}
+}
+
 func infForMilvusSeed() float64 {
 	return math.Inf(1)
 }
@@ -254,7 +341,8 @@ func (db *fakeMilvusSeedDB) InsertRecords(ctx context.Context, req milvusInsertR
 	}
 	records := make([]milvusSeedRecord, len(req.Records))
 	for index, record := range req.Records {
-		records[index] = milvusSeedRecord{ID: record.ID, Vector: append([]float64(nil), record.Vector...)}
+		records[index] = record
+		records[index].Vector = append([]float64(nil), record.Vector...)
 	}
 	req.Records = records
 	db.insertCalls = append(db.insertCalls, req)

@@ -75,6 +75,7 @@ type milvusCreateCollectionRequest struct {
 	VectorField string
 	Dimension   int
 	Metric      string
+	Complex     bool
 }
 
 type milvusInsertRecordsRequest struct {
@@ -85,8 +86,15 @@ type milvusInsertRecordsRequest struct {
 }
 
 type milvusSeedRecord struct {
-	ID     string
-	Vector []float64
+	ID              string
+	Vector          []float64
+	Title           *string
+	Price           *float64
+	Quantity        *int64
+	Active          *bool
+	Category        *string
+	DynamicMetadata map[string]any
+	Partition       *string
 }
 
 // NewMilvusSeeder validates configuration and returns a seeder for synthetic
@@ -126,14 +134,22 @@ func (s MilvusSeeder) Seed(ctx context.Context, dataset fixtures.SyntheticDatase
 		VectorField: s.config.VectorField,
 		Dimension:   s.config.Dimension,
 		Metric:      s.config.Metric,
+		Complex:     syntheticDatasetHasComplexSeedFields(dataset),
 	}); err != nil {
 		return MilvusSeedResult{}, fmt.Errorf("create milvus collection: %w", err)
 	}
 	records := make([]milvusSeedRecord, len(dataset.Records))
 	for index, record := range dataset.Records {
 		records[index] = milvusSeedRecord{
-			ID:     record.ID,
-			Vector: append([]float64(nil), record.Vector...),
+			ID:              record.ID,
+			Vector:          append([]float64(nil), record.Vector...),
+			Title:           record.Title,
+			Price:           record.Price,
+			Quantity:        record.Quantity,
+			Active:          record.Active,
+			Category:        record.Category,
+			DynamicMetadata: copyMilvusSeedDynamicMetadata(record.DynamicMetadata),
+			Partition:       record.Partition,
 		}
 	}
 	if err := s.db.InsertRecords(ctx, milvusInsertRecordsRequest{
@@ -150,6 +166,26 @@ func (s MilvusSeeder) Seed(ctx context.Context, dataset fixtures.SyntheticDatase
 		RecordsTotal:  len(dataset.Records),
 		RecordsSeeded: len(dataset.Records),
 	}, nil
+}
+
+func syntheticDatasetHasComplexSeedFields(dataset fixtures.SyntheticDataset) bool {
+	for _, record := range dataset.Records {
+		if record.Title != nil || record.Price != nil || record.Quantity != nil || record.Active != nil || record.Category != nil || len(record.DynamicMetadata) > 0 || record.Partition != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func copyMilvusSeedDynamicMetadata(metadata map[string]any) map[string]any {
+	if metadata == nil {
+		return nil
+	}
+	copy := make(map[string]any, len(metadata))
+	for key, value := range metadata {
+		copy[key] = value
+	}
+	return copy
 }
 
 func applyMilvusSeederDefaults(config MilvusSeederConfig) MilvusSeederConfig {

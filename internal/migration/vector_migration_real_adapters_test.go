@@ -10,6 +10,7 @@ import (
 
 	"github.com/h3xwave/vdb-guardian/internal/connectors"
 	"github.com/jackc/pgx/v5"
+	"github.com/milvus-io/milvus-sdk-go/v2/entity"
 )
 
 func TestValidatePGVectorMigrationWriteModeAcceptsSupportedModes(t *testing.T) {
@@ -355,6 +356,39 @@ func TestMilvusSDKMigrationReaderReadsMappedFullRecords(t *testing.T) {
 	}
 	if len(client.requests) != 1 || !reflect.DeepEqual(client.requests[0].ScalarFields, []string{"title", "price"}) || client.requests[0].DynamicField != "_milvus_dynamic" || client.requests[0].PartitionField != "_milvus_partition" {
 		t.Fatalf("unexpected request: %#v", client.requests)
+	}
+}
+
+func TestMilvusSDKMigrationReaderReadsSeededDynamicAndPartitionContract(t *testing.T) {
+	columns := milvusRecordRequestColumns{
+		idColumn:        entity.NewColumnVarChar("sku", []string{"sku-1"}),
+		vectorColumn:    entity.NewColumnFloatVector("embedding", 2, [][]float32{{0.1, 0.2}}),
+		dynamicColumn:   entity.NewColumnJSONBytes(milvusSeedDynamicMetadataField, [][]byte{[]byte(`{"brand":"acme","_milvus_partition":"tenant_a"}`)}),
+		partitionColumn: entity.NewColumnJSONBytes(milvusSeedDynamicMetadataField, [][]byte{[]byte(`{"brand":"acme","_milvus_partition":"tenant_a"}`)}),
+		idField:         "sku",
+		vectorField:     "embedding",
+		dynamicField:    milvusSeedDynamicMetadataField,
+		partitionField:  milvusSeedPartitionMetadataField,
+	}
+
+	record, err := readMilvusMigrationRecord(columns, 0)
+	if err != nil {
+		t.Fatalf("readMilvusMigrationRecord() error = %v", err)
+	}
+	if record.Partition != "tenant_a" {
+		t.Fatalf("partition = %q, want tenant_a", record.Partition)
+	}
+	if !reflect.DeepEqual(record.DynamicMetadata, map[string]any{"brand": "acme"}) {
+		t.Fatalf("dynamic metadata should exclude partition contract field, got %#v", record.DynamicMetadata)
+	}
+}
+
+func TestMilvusSDKMigrationReaderRejectsNonStringSeededPartitionMetadata(t *testing.T) {
+	column := entity.NewColumnJSONBytes(milvusSeedDynamicMetadataField, [][]byte{[]byte(`{"_milvus_partition":7}`)})
+
+	_, err := readMilvusPartitionMetadata(column, milvusSeedPartitionMetadataField, 0)
+	if err == nil || !strings.Contains(err.Error(), "has type") {
+		t.Fatalf("expected partition metadata type error, got %v", err)
 	}
 }
 

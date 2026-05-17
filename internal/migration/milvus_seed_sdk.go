@@ -2,17 +2,25 @@ package migration
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"sort"
 
 	"github.com/h3xwave/vdb-guardian/internal/fixtures"
 	milvusclient "github.com/milvus-io/milvus-sdk-go/v2/client"
 	"github.com/milvus-io/milvus-sdk-go/v2/entity"
 )
 
+const (
+	milvusSeedDynamicMetadataField   = "_milvus_dynamic"
+	milvusSeedPartitionMetadataField = "_milvus_partition"
+)
+
 type milvusSeedSDKClient interface {
 	HasCollection(ctx context.Context, collection string) (bool, error)
 	DropCollection(ctx context.Context, collection string) error
 	CreateCollection(ctx context.Context, req milvusSDKSeedCreateCollectionRequest) error
+	CreatePartition(ctx context.Context, collection string, partition string) error
 	CreateIndex(ctx context.Context, collection string, vectorField string, metric string) error
 	LoadCollection(ctx context.Context, collection string) error
 	Insert(ctx context.Context, req milvusSDKSeedInsertRequest) error
@@ -26,6 +34,7 @@ type milvusSDKSeedCreateCollectionRequest struct {
 	VectorField string
 	Dimension   int
 	Metric      string
+	Complex     bool
 }
 
 type milvusSDKSeedInsertRequest struct {
@@ -34,6 +43,14 @@ type milvusSDKSeedInsertRequest struct {
 	VectorField string
 	IDs         []string
 	Vectors     [][]float32
+	Titles      []string
+	Prices      []float64
+	Quantities  []int64
+	Actives     []bool
+	Categories  []string
+	Metadata    [][]byte
+	Partition   string
+	Complex     bool
 }
 
 type milvusSeedSDKClientFactory func(ctx context.Context, address string) (milvusSeedSDKClient, error)
@@ -106,7 +123,14 @@ func (db *milvusSDKSeedDB) CreateCollection(ctx context.Context, req milvusCreat
 			return err
 		}
 	}
-	createReq := milvusSDKSeedCreateCollectionRequest(req)
+	createReq := milvusSDKSeedCreateCollectionRequest{
+		Collection:  req.Collection,
+		IDField:     req.IDField,
+		VectorField: req.VectorField,
+		Dimension:   req.Dimension,
+		Metric:      req.Metric,
+		Complex:     req.Complex,
+	}
 	if err := db.client.CreateCollection(ctx, createReq); err != nil {
 		return err
 	}
@@ -128,23 +152,165 @@ func (db *milvusSDKSeedDB) InsertRecords(ctx context.Context, req milvusInsertRe
 	}
 	ids := make([]string, len(req.Records))
 	vectors := make([][]float32, len(req.Records))
+	sdkReq := milvusSDKSeedInsertRequest{
+		Collection:  req.Collection,
+		IDField:     req.IDField,
+		VectorField: req.VectorField,
+		IDs:         ids,
+		Vectors:     vectors,
+		Complex:     milvusSeedRecordsHaveComplexFields(req.Records),
+	}
+	if sdkReq.Complex {
+		sdkReq.Titles = make([]string, len(req.Records))
+		sdkReq.Prices = make([]float64, len(req.Records))
+		sdkReq.Quantities = make([]int64, len(req.Records))
+		sdkReq.Actives = make([]bool, len(req.Records))
+		sdkReq.Categories = make([]string, len(req.Records))
+		sdkReq.Metadata = make([][]byte, len(req.Records))
+	}
+	partitions := make(map[string][]int)
+	partitionedIndexes := make(map[int]struct{})
 	for index, record := range req.Records {
 		ids[index] = record.ID
 		vectors[index] = make([]float32, len(record.Vector))
 		for dimension, value := range record.Vector {
 			vectors[index][dimension] = float32(value)
 		}
+		if sdkReq.Complex {
+			sdkReq.Titles[index] = stringValue(record.Title)
+			sdkReq.Prices[index] = float64Value(record.Price)
+			sdkReq.Quantities[index] = int64Value(record.Quantity)
+			sdkReq.Actives[index] = boolValue(record.Active)
+			sdkReq.Categories[index] = stringValue(record.Category)
+			metadata, err := marshalMilvusSeedMetadata(record)
+			if err != nil {
+				return err
+			}
+			sdkReq.Metadata[index] = metadata
+			if record.Partition != nil && *record.Partition != "" {
+				partitions[*record.Partition] = append(partitions[*record.Partition], index)
+				partitionedIndexes[index] = struct{}{}
+			}
+		}
 	}
-	if err := db.client.Insert(ctx, milvusSDKSeedInsertRequest{
+	if len(partitions) == 0 {
+		if err := db.client.Insert(ctx, sdkReq); err != nil {
+			return err
+		}
+		return db.client.Flush(ctx, req.Collection)
+	}
+	unpartitionedIndexes := make([]int, 0, len(req.Records)-len(partitionedIndexes))
+	for index := range req.Records {
+		if _, ok := partitionedIndexes[index]; !ok {
+			unpartitionedIndexes = append(unpartitionedIndexes, index)
+		}
+	}
+	if len(unpartitionedIndexes) > 0 {
+		if err := db.client.Insert(ctx, subsetMilvusSDKSeedInsertRequest(sdkReq, unpartitionedIndexes)); err != nil {
+			return err
+		}
+	}
+	for _, partition := range sortedMilvusSeedPartitionNames(partitions) {
+		indexes := partitions[partition]
+		if err := db.client.CreatePartition(ctx, req.Collection, partition); err != nil {
+			return err
+		}
+		partitionReq := subsetMilvusSDKSeedInsertRequest(sdkReq, indexes)
+		partitionReq.Partition = partition
+		if err := db.client.Insert(ctx, partitionReq); err != nil {
+			return err
+		}
+	}
+	return db.client.Flush(ctx, req.Collection)
+}
+
+func sortedMilvusSeedPartitionNames(partitions map[string][]int) []string {
+	names := make([]string, 0, len(partitions))
+	for partition := range partitions {
+		names = append(names, partition)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func subsetMilvusSDKSeedInsertRequest(req milvusSDKSeedInsertRequest, indexes []int) milvusSDKSeedInsertRequest {
+	subset := milvusSDKSeedInsertRequest{
 		Collection:  req.Collection,
 		IDField:     req.IDField,
 		VectorField: req.VectorField,
-		IDs:         ids,
-		Vectors:     vectors,
-	}); err != nil {
-		return err
+		IDs:         make([]string, len(indexes)),
+		Vectors:     make([][]float32, len(indexes)),
+		Complex:     req.Complex,
 	}
-	return db.client.Flush(ctx, req.Collection)
+	if req.Complex {
+		subset.Titles = make([]string, len(indexes))
+		subset.Prices = make([]float64, len(indexes))
+		subset.Quantities = make([]int64, len(indexes))
+		subset.Actives = make([]bool, len(indexes))
+		subset.Categories = make([]string, len(indexes))
+		subset.Metadata = make([][]byte, len(indexes))
+	}
+	for outIndex, sourceIndex := range indexes {
+		subset.IDs[outIndex] = req.IDs[sourceIndex]
+		subset.Vectors[outIndex] = req.Vectors[sourceIndex]
+		if req.Complex {
+			subset.Titles[outIndex] = req.Titles[sourceIndex]
+			subset.Prices[outIndex] = req.Prices[sourceIndex]
+			subset.Quantities[outIndex] = req.Quantities[sourceIndex]
+			subset.Actives[outIndex] = req.Actives[sourceIndex]
+			subset.Categories[outIndex] = req.Categories[sourceIndex]
+			subset.Metadata[outIndex] = req.Metadata[sourceIndex]
+		}
+	}
+	return subset
+}
+
+func milvusSeedRecordsHaveComplexFields(records []milvusSeedRecord) bool {
+	for _, record := range records {
+		if record.Title != nil || record.Price != nil || record.Quantity != nil || record.Active != nil || record.Category != nil || len(record.DynamicMetadata) > 0 || record.Partition != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func marshalMilvusSeedMetadata(record milvusSeedRecord) ([]byte, error) {
+	metadata := copyMilvusSeedDynamicMetadata(record.DynamicMetadata)
+	if metadata == nil {
+		metadata = map[string]any{}
+	}
+	if record.Partition != nil {
+		metadata[milvusSeedPartitionMetadataField] = *record.Partition
+	}
+	return json.Marshal(metadata)
+}
+
+func stringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
+func float64Value(value *float64) float64 {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+
+func int64Value(value *int64) int64 {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+
+func boolValue(value *bool) bool {
+	if value == nil {
+		return false
+	}
+	return *value
 }
 
 // Close releases the underlying Milvus SDK connection.
@@ -186,7 +352,20 @@ func (c realMilvusSeedSDKClient) CreateCollection(ctx context.Context, req milvu
 			WithName(req.VectorField).
 			WithDataType(entity.FieldTypeFloatVector).
 			WithDim(int64(req.Dimension)))
+	if req.Complex {
+		schema.WithDynamicFieldEnabled(true).
+			WithField(entity.NewField().WithName("title").WithDataType(entity.FieldTypeVarChar).WithMaxLength(512)).
+			WithField(entity.NewField().WithName("price").WithDataType(entity.FieldTypeDouble)).
+			WithField(entity.NewField().WithName("quantity").WithDataType(entity.FieldTypeInt64)).
+			WithField(entity.NewField().WithName("active").WithDataType(entity.FieldTypeBool)).
+			WithField(entity.NewField().WithName("category").WithDataType(entity.FieldTypeVarChar).WithMaxLength(256)).
+			WithField(entity.NewField().WithName(milvusSeedDynamicMetadataField).WithDataType(entity.FieldTypeJSON))
+	}
 	return c.client.CreateCollection(ctx, schema, 1)
+}
+
+func (c realMilvusSeedSDKClient) CreatePartition(ctx context.Context, collection string, partition string) error {
+	return c.client.CreatePartition(ctx, collection, partition)
 }
 
 func (c realMilvusSeedSDKClient) CreateIndex(ctx context.Context, collection string, vectorField string, metric string) error {
@@ -202,13 +381,21 @@ func (c realMilvusSeedSDKClient) LoadCollection(ctx context.Context, collection 
 }
 
 func (c realMilvusSeedSDKClient) Insert(ctx context.Context, req milvusSDKSeedInsertRequest) error {
-	_, err := c.client.Insert(
-		ctx,
-		req.Collection,
-		"",
+	columns := []entity.Column{
 		entity.NewColumnVarChar(req.IDField, req.IDs),
 		entity.NewColumnFloatVector(req.VectorField, vectorDimension(req.Vectors), req.Vectors),
-	)
+	}
+	if req.Complex {
+		columns = append(columns,
+			entity.NewColumnVarChar("title", req.Titles),
+			entity.NewColumnDouble("price", req.Prices),
+			entity.NewColumnInt64("quantity", req.Quantities),
+			entity.NewColumnBool("active", req.Actives),
+			entity.NewColumnVarChar("category", req.Categories),
+			entity.NewColumnJSONBytes(milvusSeedDynamicMetadataField, req.Metadata),
+		)
+	}
+	_, err := c.client.Insert(ctx, req.Collection, req.Partition, columns...)
 	return err
 }
 
