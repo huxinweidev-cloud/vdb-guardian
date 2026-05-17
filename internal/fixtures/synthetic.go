@@ -69,17 +69,31 @@ type SyntheticDataset struct {
 	Queries     []SyntheticVector `json:"queries"`
 }
 
-// SyntheticVector stores a stable vector identifier and its dense vector values.
+// SyntheticVector stores a stable vector identifier, dense vector values, and
+// optional complex fixture fields used by migration smoke tests.
 //
-// IDs are generated with deterministic prefixes so later Milvus and pgvector
-// seeders can map records and queries without relying on database-generated IDs.
+// Generated fixtures populate only ID and Vector so existing id/vector smoke
+// data remains unchanged. Committed complex fixtures may also populate typed
+// scalar fields, dynamic metadata, and partition labels to verify that Milvus to
+// pgvector migration preserves retrieval-behavior record context without leaking
+// database-specific fields into the fingerprint engine.
 //
-// SyntheticVector 存储了一个稳定的向量标识符及其对应的稠密向量数值。
-// 这些 ID 采用确定性的前缀生成，从而使后续的 Milvus 和 pgvector 灌入器在映射记录
-// 和查询时，可以完全摆脱对数据库自增/自生成 ID 的依赖。
+// SyntheticVector 存储稳定的向量标识符、稠密向量数值，以及迁移冒烟测试会使用的
+// 可选复杂字段。
+// 自动生成的固件只填充 ID 与 Vector，以确保既有 id/vector 冒烟数据保持不变；
+// 已提交的复杂固件则可以额外填充类型化标量字段、动态元数据和分区标签，用于验证
+// Milvus 到 pgvector 迁移在不向指纹引擎泄露数据库特有字段的前提下，仍能保留
+// 检索行为记录上下文。
 type SyntheticVector struct {
-	ID     string    `json:"id"`
-	Vector []float64 `json:"vector"`
+	ID              string         `json:"id"`
+	Vector          []float64      `json:"vector"`
+	Title           *string        `json:"title,omitempty"`
+	Price           *float64       `json:"price,omitempty"`
+	Quantity        *int64         `json:"quantity,omitempty"`
+	Active          *bool          `json:"active,omitempty"`
+	Category        *string        `json:"category,omitempty"`
+	DynamicMetadata map[string]any `json:"dynamic_metadata,omitempty"`
+	Partition       *string        `json:"partition,omitempty"`
 }
 
 // GenerateSyntheticDataset creates deterministic record and query vectors for

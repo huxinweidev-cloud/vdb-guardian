@@ -141,6 +141,101 @@ func TestWriteSyntheticDatasetWritesReadableJSON(t *testing.T) {
 	}
 }
 
+func TestSyntheticDatasetDecodesComplexOptionalFields(t *testing.T) {
+	content := []byte(`{
+	  "seed": 20260516,
+	  "dimension": 3,
+	  "record_count": 1,
+	  "query_count": 1,
+	  "metric": "cosine",
+	  "records": [
+	    {
+	      "id": "vec-complex-001",
+	      "vector": [0.1, 0.2, 0.3],
+	      "title": "deterministic item",
+	      "price": 19.95,
+	      "quantity": 7,
+	      "active": true,
+	      "category": null,
+	      "dynamic_metadata": {
+	        "tags": ["smoke", "copy"],
+	        "nested": {"rank": 1, "enabled": false},
+	        "nullable": null
+	      },
+	      "partition": "tenant_a"
+	    }
+	  ],
+	  "queries": [
+	    {"id": "query-complex-001", "vector": [0.4, 0.5, 0.6]}
+	  ]
+	}`)
+
+	var decoded SyntheticDataset
+	if err := json.Unmarshal(content, &decoded); err != nil {
+		t.Fatalf("decode complex synthetic fixture: %v", err)
+	}
+	if len(decoded.Records) != 1 {
+		t.Fatalf("expected one decoded record, got %d", len(decoded.Records))
+	}
+	record := decoded.Records[0]
+	if record.Title == nil || *record.Title != "deterministic item" {
+		t.Fatalf("expected title to round-trip, got %#v", record.Title)
+	}
+	if record.Price == nil || *record.Price != 19.95 {
+		t.Fatalf("expected price to round-trip, got %#v", record.Price)
+	}
+	if record.Quantity == nil || *record.Quantity != 7 {
+		t.Fatalf("expected quantity to round-trip, got %#v", record.Quantity)
+	}
+	if record.Active == nil || !*record.Active {
+		t.Fatalf("expected active to round-trip true, got %#v", record.Active)
+	}
+	if record.Category != nil {
+		t.Fatalf("expected null category to decode as nil, got %#v", record.Category)
+	}
+	if record.Partition == nil || *record.Partition != "tenant_a" {
+		t.Fatalf("expected partition to round-trip, got %#v", record.Partition)
+	}
+	if got := record.DynamicMetadata["nullable"]; got != nil {
+		t.Fatalf("expected nullable dynamic metadata to remain nil, got %#v", got)
+	}
+	tags, ok := record.DynamicMetadata["tags"].([]any)
+	if !ok || len(tags) != 2 || tags[1] != "copy" {
+		t.Fatalf("expected dynamic metadata array to round-trip, got %#v", record.DynamicMetadata["tags"])
+	}
+	nested, ok := record.DynamicMetadata["nested"].(map[string]any)
+	if !ok || nested["rank"] != float64(1) || nested["enabled"] != false {
+		t.Fatalf("expected nested dynamic metadata to round-trip, got %#v", record.DynamicMetadata["nested"])
+	}
+}
+
+func TestSyntheticSmallFixtureRemainsBackwardCompatible(t *testing.T) {
+	content, err := os.ReadFile(filepath.Join("..", "..", "testdata", "migration", "synthetic-small.json"))
+	if err != nil {
+		t.Fatalf("read existing synthetic fixture: %v", err)
+	}
+
+	var decoded SyntheticDataset
+	if err := json.Unmarshal(content, &decoded); err != nil {
+		t.Fatalf("decode existing synthetic fixture: %v", err)
+	}
+	if decoded.RecordCount == 0 || len(decoded.Records) != decoded.RecordCount {
+		t.Fatalf("unexpected existing fixture records: count=%d len=%d", decoded.RecordCount, len(decoded.Records))
+	}
+	if decoded.QueryCount == 0 || len(decoded.Queries) != decoded.QueryCount {
+		t.Fatalf("unexpected existing fixture queries: count=%d len=%d", decoded.QueryCount, len(decoded.Queries))
+	}
+	if decoded.Records[0].Title != nil ||
+		decoded.Records[0].Price != nil ||
+		decoded.Records[0].Quantity != nil ||
+		decoded.Records[0].Active != nil ||
+		decoded.Records[0].Category != nil ||
+		decoded.Records[0].DynamicMetadata != nil ||
+		decoded.Records[0].Partition != nil {
+		t.Fatalf("expected id/vector fixture optional fields to remain empty, got %#v", decoded.Records[0])
+	}
+}
+
 func assertApproxUnitVector(t *testing.T, vector []float64) {
 	t.Helper()
 	var sum float64
